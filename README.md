@@ -1,7 +1,7 @@
 # XNotify
 
 XNotify displays a notification on the screen.
-XMenu receives a notification specification in stdin and shows a
+XNotify receives a notification specification in stdin and shows a
 notification for the user on the screen.
 
 
@@ -49,7 +49,7 @@ the manual file `./xnotify.1` into `${MANPREFIX}/man1/` directory.
 
 ## Running XNotify
 
-XMenu receives as input a notification specification where each line is
+XNotify receives as input a notification specification where each line is
 a notification entry.  Each line is made out of a notification title and
 a notification body separated by any number of tabs.  Lines without
 title are ignored.
