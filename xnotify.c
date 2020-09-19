@@ -41,6 +41,9 @@ static struct Item *head;
 static struct Item *tail;
 static int remap = 0;           /* whether we should remap item windows */
 
+/* flags */
+static int oflag = 0;
+
 /* include configuration structure */
 #include "config.h"
 
@@ -89,8 +92,8 @@ getoptions(int argc, char *argv[])
 
 	while ((ch = getopt(argc, argv, "G:g:m:s:o")) != -1) {
 		switch (ch) {
-	  case 'o':
-			config.onetime = 1;
+		case 'o':
+			oflag = 1;
 			break;
 		case 'G':
 			config.gravityspec = optarg;
@@ -738,9 +741,9 @@ parseinput(char *s)
 static int
 timeitems(void)
 {
-	int nitem=0; // number of items deleted
 	struct Item *item;
 	struct Item *tmp;
+	int nitem=0;    /* number of items deleted */
 
 	item = head;
 	while (item) {
@@ -872,7 +875,7 @@ main(int argc, char *argv[])
 		timeout = (head) ? 1000 : -1;
 		XFlush(dpy);
 
-		if (config.onetime && done)
+		if (oflag && done)
 			break;
 	}
 
