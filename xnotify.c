@@ -42,7 +42,7 @@ static struct Item *tail;
 static int remap = 0;           /* whether we should remap item windows */
 
 /* flags */
-static int oflag = 0;
+static int oflag = 0;           /* whether to terminate after the first notifications timeout is reached */
 
 /* include configuration structure */
 #include "config.h"
@@ -387,6 +387,13 @@ getitem(Window win)
 	return NULL;
 }
 
+/* copy area from item's pixmap into item's window */
+static void
+copypixmap(struct Item *item)
+{
+	XCopyArea(dpy, item->pixmap, item->win, dc.gc, 0, 0, geom.w, geom.h, 0, 0);
+}
+
 /* read x events */
 static void
 readevent(void)
@@ -399,8 +406,7 @@ readevent(void)
 		case Expose:
 			item = getitem(ev.xexpose.window);
 			if (item)
-				XCopyArea(dpy, item->pixmap, item->win, dc.gc,
-				          0, 0, geom.w, geom.h, 0, 0);
+				copypixmap(item);
 			break;
 		}
 	}
@@ -658,6 +664,8 @@ drawitem(struct Item *item)
 		drawtext(draw, &dc.foreground, x, y, geom.pad, item->body);
 
 	XftDrawDestroy(draw);
+
+	copypixmap(item);
 }
 
 /* add item notification item and set its window and contents */
