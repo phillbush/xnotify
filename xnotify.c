@@ -639,8 +639,10 @@ drawitem(struct Item *item)
 	}
 
 	/* draw text */
+	if (!item->body)
+		y = (geom.h - geom.pad) /2;
 	drawtext(draw, &dc.foreground, x, y, geom.pad, item->title);
-	y += geom.pad + geom.pad;
+	y = geom.h - geom.pad * 2;
 	if (item->body)
 		drawtext(draw, &dc.foreground, x, y, geom.pad, item->body);
 
