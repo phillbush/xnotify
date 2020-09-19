@@ -74,3 +74,8 @@ To create a fifo for XNotify, you can place the following in your `~/.xinitrc`:
 		cat /tmp/xnotify.fifo
 		sleep 3
 	done > /tmp/xnotify.fifo &
+
+To create a notification with a image, input to XNotify a line beginning
+with `IMG:/path/to/file.png` followed by a tab.  For example:
+
+	$ printf 'IMG:/path/to/file.png\tThis is a notification\n' > /tmp/xnotify.fifo
