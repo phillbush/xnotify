@@ -89,3 +89,5 @@ run `xnotify` with the `-g` option set to the notification size in
 The argument for the `-g` option has the form `[WIDTHxHEIGHT][{+-}XPOS{+-}YPOS]`.
 Parts between square brackets are optional.
 `{+-}` means to chose either `+` or `-`.
+
+See the [manual](https://github.com/phillbush/xnotify/wiki) for more information on how xnotify works.
