@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/63266536/93669968-19e21f80-fa87-11ea-8482-1c5e35ae7fb7.png", title="demo"/>
+</p>
+
 # XNotify
 
 XNotify displays a notification on the screen.
@@ -69,10 +73,7 @@ To create a fifo for XNotify, you can place the following in your `~/.xinitrc`:
 
 	rm -f /tmp/xnotify.fifo
 	mkfifo /tmp/xnotify.fifo
-	while cat /tmp/xnotify.fifo
-	do
-		sleep 3
-	done | xnotify -s 10 &
+	xnotify -s 10 </tmp/xnotify.fifo 3<>/tmp/xnotify.fifo &
 
 To create a notification with a image, input to XNotify a line beginning
 with `IMG:/path/to/file.png` followed by a tab.  For example:
