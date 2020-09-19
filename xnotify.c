@@ -54,7 +54,7 @@ static int oflag = 0;           /* whether to terminate after the first notifica
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-G gravity] [-g geometry] [-m monitor]\n");
+	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-g geometry] [-m monitor] [-s seconds]\n");
 	exit(1);
 }
 
@@ -74,9 +74,9 @@ getresources(void)
 		config.foreground_color = xval.addr;
 	if (XrmGetResource(xdb, "xnotify.border", "*", &type, &xval) == True)
 		config.border_color = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.geometryspec", "*", &type, &xval) == True)
+	if (XrmGetResource(xdb, "xnotify.geometry", "*", &type, &xval) == True)
 		config.geometryspec = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.gravityspec", "*", &type, &xval) == True)
+	if (XrmGetResource(xdb, "xnotify.gravity", "*", &type, &xval) == True)
 		config.gravityspec = xval.addr;
 	if (XrmGetResource(xdb, "xnotify.borderWidth", "*", &type, &xval) == True)
 		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)

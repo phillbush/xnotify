@@ -1,0 +1,181 @@
+.TH XNOTIFY 1
+.SH NAME
+xnotify \- popup a notification on the screen
+.SH SYNOPSIS
+.B xnotify
+.RB [ \-o ]
+.RB [ \-G
+.IR gravity ]
+.RB [ \-g
+.IR geometry ]
+.RB [ \-m
+.IR monitor ]
+.RB [ \-s
+.IR seconds ]
+.SH DESCRIPTION
+.B xnotify
+is a notification launcher for X,
+it receives a notification specification from standard input
+and shows a notification on the screen.
+The notification disappears automatically after a given number of seconds
+or after a mouse click is operated on it.
+.PP
+The options are as follows:
+.TP
+.BI "\-G " gravity
+Specify the gravity,
+that is, where in the screen to display xnotify.
+.I gravity
+can be "NE" for NorthEastGravity (display on the top right corner of the screen);
+"SE" for SouthEastGravity (display on the bottom right corner of the screen);
+"C" for CenterGravity (display on the center of the screen);
+etc.
+.TP
+.BI "\-g " geometry
+Specifies the geometry in the form
+.B [<WIDTH>x<HEIGHT>][{-+}<XOFFSET>{-+}<YOFFSET>].
+Replace
+.B <WIDTH>
+by the desired width,
+.B <HEIGHT>
+by the desired height, and so on.
+A value of 0 sets a field to the default value.
+So, for example,
+.B -g 0x80+0+0
+set the height to 80 pixels while maintaining other values to the default.
+.B <XOFFSET>
+and
+.B <YOFFSET>
+can be preceded by either a minus or a plus
+(meaning negative or positive values).
+Fields in square brackets are optional.
+So, for example,
+.B "-g 0x80"
+is the same as
+.BR "-g 0x80+0+0" ;
+and
+.B "-g -10+10"
+is the same as
+.BR "-g 0x0-10+10" .
+.TP
+.BI "\-m " monitor
+Makes xnotify be displayed on the specified monitor.
+Monitor numbers start from 0.
+Without this option,
+xnotify is displayed on the first monitor (that is, the monitor 0).
+.TP
+.B \-o
+Run xnotify one time.
+With this option,
+xnotify will terminate after the first notifications timeout is reached.
+.TP
+.BI "\-s " seconds
+Specify the time, in seconds,
+for a notification to be displayed before it is removed from screen.
+Without this option, the default of 10 seconds is used.
+.PP
+Each line read from stdin specify a notification and has the following format:
+.IP
+.EX
+ITEM := [NAME:VALUE TABS] TITLE [TABS BODY] NEWLINE
+.EE
+.PP
+That means that each line is composed by
+an optional set of name-value pairs separated by colon (:) followed by tabs,
+then the title text of the notification,
+then a optional body text of the notification preceded by tabs,
+then a newline.
+Brackets group optional elements.
+Empty lines are ignored.
+.PP
+The following names are currently accepted for the NAME:VALUE pairs:
+.TP
+.B IMG:
+Specify the path of a image to be displayed on the notification.
+.PP
+Clicking on a notification removes it from the screen.
+.SH ENVIRONMENT
+The following environment variables affect the execution of
+.B xnotify
+.TP
+.B DISPLAY
+The display to start
+.B xnotify
+on.
+.SH RESOURCES
+.B xnotify
+understands the following X resources.
+.TP
+.B xnotify.font
+The fonts to drawn the text.
+More than one font can be specified, separated by comma (,).
+If more than one font is specified, the first font with a given glyph
+is used to display that glyph on the screen.
+.TP
+.B xnotify.background
+The color of the notification background.
+.TP
+.B xnotify.foreground
+The color of the notification text.
+.TP
+.B xnotify.border
+The color of the border around a notification.
+.TP
+.B xnotify.geometry
+The geometry in the form 
+.BR [<WIDTH>x<HEIGHT>][{+-}<XOFFSET>{+-}<YOFFSET>] .
+See the description of the option
+.B -g
+for more information.
+.TP
+.B xnotify.gravity
+Where in the screen to display notifications.
+See the description of the option
+.B -G
+for more information.
+.SH EXAMPLES
+The following is an example of how to run XNotify.
+.IP
+.EX
+$ xnotify \-m 10 \-G NE \-g \-10+10 \-s 15
+.EE
+.PP
+This line means: read notifications from stdin,
+display the notifications on the north east
+.RB ( "-G NE" )
+of the monitor 0
+.RB ( "-m 0" ),
+that is, on the upper right corner of the first monitor.
+The notifications should be placed -10 pixels to the left and +10 pixels down
+(thus creating a 10 pixel gap with the upper right corner).
+Each notification stay alive for 15 seconds.
+.PP
+To create a named pipe for XNotify,
+the following lines can be placed on
+.BR ~/.xinitrc :
+.IP
+.EX
+rm \-f /tmp/xnotify.fifo
+mkfifo /tmp/xnotify.fifo
+xnotify </tmp/xnotify.fifo 3<>/tmp/xnotify.fifo &
+.EE
+.PP
+Then a notification can be created by echoing into the named pipe:
+.IP
+.EX
+$ echo Hello World > /tmp/xnotify.fifo
+.EE
+.PP
+To create a notification with a image,
+input to XNotify a line beginning with
+.I IMG:/path/to/file.png
+followed by a tab.
+For example:
+.IP
+.EX
+$ printf 'IMG:/path/to/file.png\etThis is a notification\en' > /tmp/xnotify.fifo
+.EE
+.PP
+.SH SEE ALSO
+.IR tiramisu (1),
+.IR herbe (1)
