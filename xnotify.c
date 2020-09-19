@@ -41,6 +41,9 @@ static struct Item *head;
 static struct Item *tail;
 static int remap = 0;           /* whether we should remap item windows */
 
+/* flags */
+static int oflag = 0;
+
 /* include configuration structure */
 #include "config.h"
 
@@ -87,8 +90,11 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:g:m:s:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:g:m:s:o")) != -1) {
 		switch (ch) {
+		case 'o':
+			oflag = 1;
+			break;
 		case 'G':
 			config.gravityspec = optarg;
 			break;
@@ -732,19 +738,24 @@ parseinput(char *s)
 }
 
 /* check whether items have passed the time */
-static void
+static int
 timeitems(void)
 {
 	struct Item *item;
 	struct Item *tmp;
+	int nitem=0;    /* number of items deleted */
 
 	item = head;
 	while (item) {
 		tmp = item;
 		item = item->next;
-		if (time(NULL) - tmp->time > config.sec)
+		if (time(NULL) - tmp->time > config.sec) {
 			delitem(tmp);
+			nitem++;
+		}
 	}
+
+	return nitem;
 }
 
 static void
@@ -801,6 +812,7 @@ main(int argc, char *argv[])
 	struct pollfd pfd[2];   /* [2] for stdin and xfd, see poll(2) */
 	int timeout = -1;       /* maximum interval for poll(2) to complete */
 	int flags;              /* status flags for stdin */
+	int done = 0;           /* increments when a notifications time is up */
 
 	/* open connection to server and set X variables */
 	if ((dpy = XOpenDisplay(NULL)) == NULL)
@@ -857,11 +869,14 @@ main(int argc, char *argv[])
 				readevent();
 			}
 		}
-		timeitems();
+		done += timeitems();
 		if (remap)
 			mapitems();
 		timeout = (head) ? 1000 : -1;
 		XFlush(dpy);
+
+		if (oflag && done)
+			break;
 	}
 
 	/* clean up stuff */
