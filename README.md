@@ -56,7 +56,7 @@ title are ignored.
 
 The following is an example of how to run XNotify
 
-	$ </tmp/xnotify.fifo xnotify -m 0 -G NE -g -10+10 -s 15
+	$ cat /tmp/xnotify.fifo | xnotify -m 0 -G NE -g -10+10 -s 15
 
 This line means: read notifications from `/tmp/xnotify.fifo`, display
 the notifications on the north east (`-G NE`) of the monitor 0 (`-m 0`),
