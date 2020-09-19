@@ -394,24 +394,6 @@ copypixmap(struct Item *item)
 	XCopyArea(dpy, item->pixmap, item->win, dc.gc, 0, 0, geom.w, geom.h, 0, 0);
 }
 
-/* read x events */
-static void
-readevent(void)
-{
-	struct Item *item;
-	XEvent ev;
-
-	while (XPending(dpy) && !XNextEvent(dpy, &ev)) {
-		switch (ev.type) {
-		case Expose:
-			item = getitem(ev.xexpose.window);
-			if (item)
-				copypixmap(item);
-			break;
-		}
-	}
-}
-
 /* load and scale image */
 static Imlib_Image
 loadimage(const char *file)
@@ -491,8 +473,7 @@ createwindow(void)
 	swa.background_pixel = dc.background.pixel;
 	swa.border_pixel = dc.border.pixel;
 	swa.save_under = True;  /* pop-up windows should save_under */
-	swa.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask
-	               | LeaveWindowMask;
+	swa.event_mask = ExposureMask | ButtonPressMask;
 
 	win = XCreateWindow(dpy, root, geom.x, geom.y, geom.w, geom.h, config.border_pixels,
 	                    CopyFromParent, CopyFromParent, CopyFromParent,
@@ -743,6 +724,27 @@ parseinput(char *s)
 		return;
 
 	additem(title, body, file);
+}
+
+/* read x events */
+static void
+readevent(void)
+{
+	struct Item *item;
+	XEvent ev;
+
+	while (XPending(dpy) && !XNextEvent(dpy, &ev)) {
+		switch (ev.type) {
+		case Expose:
+			if (ev.xexpose.count == 0 && (item = getitem(ev.xexpose.window)) != NULL)
+				copypixmap(item);
+			break;
+		case ButtonPress:
+			if ((item = getitem(ev.xexpose.window)) != NULL)
+				delitem(item);
+			break;
+		}
+	}
 }
 
 /* check whether items have passed the time */

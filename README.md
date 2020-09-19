@@ -56,9 +56,9 @@ title are ignored.
 
 The following is an example of how to run XNotify
 
-	$ cat /tmp/xnotify.fifo | xnotify -m 0 -G NE -g -10+10 -s 15
+	$ xnotify -m 0 -G NE -g -10+10 -s 15
 
-This line means: read notifications from `/tmp/xnotify.fifo`, display
+This line means: read notifications from stdin, display
 the notifications on the north east (`-G NE`) of the monitor 0 (`-m 0`),
 that is, on the upper right corner of the first monitor.  The
 notifications should be placed -10 pixels to the left and +10 pixels
@@ -67,13 +67,12 @@ Each notification stay alive for 15 seconds.
 
 To create a fifo for XNotify, you can place the following in your `~/.xinitrc`:
 
+	rm -f /tmp/xnotify.fifo
 	mkfifo /tmp/xnotify.fifo
-	while true
+	while cat /tmp/xnotify.fifo
 	do
-		[ -p /tmp/xnotify.fifo ] || break
-		cat /tmp/xnotify.fifo
 		sleep 3
-	done > /tmp/xnotify.fifo &
+	done | xnotify -s 10 &
 
 To create a notification with a image, input to XNotify a line beginning
 with `IMG:/path/to/file.png` followed by a tab.  For example:

@@ -8,7 +8,7 @@ static struct Config config = {
 	.border_color = "#3465a4",
 
 	/* geometry and gravity (see the manual) */
-	.geometryspec = "0x0-10+10",
+	.geometryspec = "0x0+0+0",
 	.gravityspec = "NE",
 
 	/* size of border and gaps, in pixels, */
