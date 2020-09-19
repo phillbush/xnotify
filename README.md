@@ -60,7 +60,7 @@ title are ignored.
 
 The following is an example of how to run XNotify
 
-	$ xnotify -m 0 -G NE -g -10+10 -s 15
+	$ xnotify -m 10 -G NE -g -10+10 -s 15
 
 This line means: read notifications from stdin, display
 the notifications on the north east (`-G NE`) of the monitor 0 (`-m 0`),
@@ -79,3 +79,13 @@ To create a notification with a image, input to XNotify a line beginning
 with `IMG:/path/to/file.png` followed by a tab.  For example:
 
 	$ printf 'IMG:/path/to/file.png\tThis is a notification\n' > /tmp/xnotify.fifo
+
+To use a different size other than the default for the notifications,
+run `xnotify` with the `-g` option set to the notification size in
+`WIDTHxHEIGHT`.  For example:
+
+	$ xnotify -g 300x80
+
+The -g option has the form `[WIDTHxHEIGHT][{+-}XPOS{+-}YPOS]`.
+Parts between square brackets are optional.
+`{+-}` means to chose either `+` or `-`.
