@@ -87,7 +87,7 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:g:m:s:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:g:m:s:f:c:C:b:B:")) != -1) {
 		switch (ch) {
 		case 'G':
 			config.gravityspec = optarg;
@@ -102,6 +102,21 @@ getoptions(int argc, char *argv[])
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
 				config.sec = n;
 			break;
+		case 'f':
+	  	config.font = optarg;
+			break;
+		case 'c':
+	  	config.background_color = optarg;
+			break;
+	  case 'C':
+	  	config.foreground_color = optarg;
+	  	break;
+	  case 'b':
+	  	config.border_color = optarg;
+	  	break;
+	  case 'B':
+	  	config.border_pixels = atoi(optarg);
+	  	break;
 		default:
 			usage();
 			break;
