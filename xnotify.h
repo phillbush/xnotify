@@ -15,6 +15,7 @@ struct Config {
 	int gap_pixels;
 
 	int sec;
+	int onetime;
 };
 
 /* monitor geometry structure */
