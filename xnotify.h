@@ -1,4 +1,12 @@
 enum {DownWards, UpWards};
+enum {
+	NetWMName,
+	NetWMWindowType,
+	NetWMWindowTypeNotification,
+	NetWMState,
+	NetWMStateAbove,
+	NetLast
+};
 
 /* configuration structure */
 struct Config {

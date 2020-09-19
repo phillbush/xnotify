@@ -9,6 +9,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 #include <X11/Xresource.h>
 #include <X11/Xft/Xft.h>
 #include <X11/extensions/Xinerama.h>
@@ -31,6 +32,8 @@ static int screen;
 static int depth;
 static int xfd;
 static struct Monitor mon = {0};
+static Atom utf8string;
+static Atom netatom[NetLast];
 
 /* drawing context */
 static struct DC dc;
@@ -90,11 +93,8 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:g:m:s:o")) != -1) {
+	while ((ch = getopt(argc, argv, "G:g:m:os:")) != -1) {
 		switch (ch) {
-		case 'o':
-			oflag = 1;
-			break;
 		case 'G':
 			config.gravityspec = optarg;
 			break;
@@ -103,6 +103,9 @@ getoptions(int argc, char *argv[])
 			break;
 		case 'm':
 			mon.num = atoi(optarg);
+			break;
+		case 'o':
+			oflag = 1;
 			break;
 		case 's':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
@@ -375,6 +378,18 @@ initgeom(void)
 		geom.imagesize = 0;
 }
 
+/* Intern the used atoms */
+static void
+initatoms(void)
+{
+	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
+	netatom[NetWMName] = XInternAtom(dpy, "_NET_WM_NAME", False);
+	netatom[NetWMWindowType] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+	netatom[NetWMWindowTypeNotification] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
+	netatom[NetWMState] = XInternAtom(dpy, "_NET_WM_STATE", False);
+	netatom[NetWMStateAbove] = XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
+}
+
 /* get item of given window */
 static struct Item *
 getitem(Window win)
@@ -462,10 +477,11 @@ loadimage(const char *file)
 	return image;
 }
 
-/* create override_redirect window for item */
+/* create window for item */
 static Window
 createwindow(void)
 {
+	XClassHint classhint = {"XNotify", "XNotify"};
 	XSetWindowAttributes swa;
 	Window win;
 
@@ -479,6 +495,16 @@ createwindow(void)
 	                    CopyFromParent, CopyFromParent, CopyFromParent,
 	                    CWOverrideRedirect | CWBackPixel | CWBorderPixel |
 	                    CWSaveUnder | CWEventMask, &swa);
+
+	XSetClassHint(dpy, win, &classhint);
+
+	XStoreName(dpy, win, "XNotify");
+	XChangeProperty(dpy, win, netatom[NetWMName], utf8string, 8, PropModeReplace,
+	                (unsigned char *)"XNotify", strlen("XNotify"));
+	XChangeProperty(dpy, win, netatom[NetWMWindowType], XA_ATOM, 32, PropModeReplace,
+	                (unsigned char *)&netatom[NetWMWindowTypeNotification], 1L);
+	XChangeProperty(dpy, win, netatom[NetWMState], XA_ATOM, 32, PropModeReplace,
+	                (unsigned char *)&netatom[NetWMStateAbove], 1L);
 
 	return win;
 }
@@ -854,6 +880,7 @@ main(int argc, char *argv[])
 	initmonitor();
 	initdc();
 	initgeom();
+	initatoms();
 
 	/* Make stdin nonblocking */
 	if ((flags = fcntl(STDIN_FILENO, F_GETFL)) == -1)
