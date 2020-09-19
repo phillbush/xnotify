@@ -86,6 +86,6 @@ run `xnotify` with the `-g` option set to the notification size in
 
 	$ xnotify -g 300x80
 
-The -g option has the form `[WIDTHxHEIGHT][{+-}XPOS{+-}YPOS]`.
+The argument for the `-g` option has the form `[WIDTHxHEIGHT][{+-}XPOS{+-}YPOS]`.
 Parts between square brackets are optional.
 `{+-}` means to chose either `+` or `-`.
