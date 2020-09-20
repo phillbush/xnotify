@@ -13,9 +13,12 @@ notification for the user on the screen.
 
 XNotify comes with the following features:
 
-* Image support (see below).
+* xnotify receives notifications from stdin, you can use a fifo to echo
+  notifications on the fly like `echo Hello World > /tmp/xnotify.fifo`
+* xnotify queue notifications and display them one above the other.
+* Image support, just prefix the notification string with `IMG:/path/to/the/file.png` and a tab.
+* Multiple monitor support.  You can set the monitor with the `-m` option.
 * Support for fallback fonts (you can set more than one fonts, that will be tried in order).
-* Queue of notifications (each notification is displayed above the previous one).
 * X resources support (you don't need to recompile Xnotify for configuring it).
 
 
