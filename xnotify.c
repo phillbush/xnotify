@@ -489,7 +489,7 @@ createwindow(void)
 	swa.background_pixel = dc.background.pixel;
 	swa.border_pixel = dc.border.pixel;
 	swa.save_under = True;  /* pop-up windows should save_under */
-	swa.event_mask = ExposureMask | ButtonPressMask;
+	swa.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask;
 
 	win = XCreateWindow(dpy, root, geom.x, geom.y, geom.w, geom.h, config.border_pixels,
 	                    CopyFromParent, CopyFromParent, CopyFromParent,
@@ -676,6 +676,13 @@ drawitem(struct Item *item)
 	XftDrawDestroy(draw);
 }
 
+/* reset time of item */
+static void
+resettime(struct Item *item)
+{
+	item->time = time(NULL);
+}
+
 /* add item notification item and set its window and contents */
 static void
 additem(const char *title, const char *body, const char *file)
@@ -688,7 +695,6 @@ additem(const char *title, const char *body, const char *file)
 	item->next = NULL;
 	item->title = strdup(title);
 	item->body = (body) ? strdup(body) : NULL;
-	item->time = time(NULL);
 	item->image = (file) ? loadimage(file) : NULL;
 	item->win = createwindow();
 	if (!head)
@@ -698,6 +704,7 @@ additem(const char *title, const char *body, const char *file)
 	item->prev = tail;
 	tail = item;
 
+	resettime(item);
 	drawitem(item);
 
 	remap = 1;
@@ -769,6 +776,10 @@ readevent(void)
 		case ButtonPress:
 			if ((item = getitem(ev.xexpose.window)) != NULL)
 				delitem(item);
+			break;
+		case MotionNotify:
+			if ((item = getitem(ev.xmotion.window)) != NULL)
+				resettime(item);
 			break;
 		}
 	}
