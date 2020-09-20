@@ -674,8 +674,6 @@ drawitem(struct Item *item)
 		drawtext(draw, &dc.foreground, x, y, geom.pad, item->body);
 
 	XftDrawDestroy(draw);
-
-	copypixmap(item);
 }
 
 /* add item notification item and set its window and contents */
@@ -812,6 +810,7 @@ mapitems(void)
 		}
 		XMoveWindow(dpy, item->win, geom.x, y);
 		XMapWindow(dpy, item->win);
+		copypixmap(item);
 	}
 
 	remap = 0;
