@@ -373,7 +373,7 @@ initgeom(void)
 		break;
 	}
 
-	geom.imagesize = geom.h - (2 * geom.pad);
+	geom.imagesize = geom.h - geom.pad;
 	if (geom.imagesize < 0)
 		geom.imagesize = 0;
 }
@@ -652,6 +652,7 @@ drawitem(struct Item *item)
 	item->pixmap = XCreatePixmap(dpy, item->win, geom.w, geom.h, depth);
 	draw = XftDrawCreate(dpy, item->pixmap, visual, colormap);
 
+	/* draw background */
 	XSetForeground(dpy, dc.gc, dc.background.pixel);
 	XFillRectangle(dpy, item->pixmap, dc.gc, 0, 0, geom.w, geom.h);
 
@@ -659,9 +660,9 @@ drawitem(struct Item *item)
 	if (item->image) {
 		imlib_context_set_image(item->image);
 		imlib_context_set_drawable(item->pixmap);
-		imlib_render_image_on_drawable(x, y);
+		imlib_render_image_on_drawable(x / 2, y / 2);
 		imlib_free_image();
-		x += geom.pad + geom.imagesize;
+		x += geom.imagesize;
 	}
 
 	/* draw text */
