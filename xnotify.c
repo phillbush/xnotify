@@ -41,8 +41,8 @@ static struct DC dc;
 
 /* notifications */
 static struct Geometry geom;
-static struct Item *head;
-static struct Item *tail;
+static struct Item *head = NULL;
+static struct Item *tail = NULL;
 static int change = 0;          /* whether the queue of notifications changed */
 
 /* flags */
@@ -311,6 +311,9 @@ initmonitor(void)
 		mon.h = info[selmon].height;
 		XFree(info);
 	}
+
+	if (head)
+		change = 1;
 }
 
 /* init draw context structure */
@@ -360,6 +363,13 @@ initatoms(void)
 	netatom[NetWMWindowTypeNotification] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
 	netatom[NetWMState] = XInternAtom(dpy, "_NET_WM_STATE", False);
 	netatom[NetWMStateAbove] = XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
+}
+
+/* watch ConfigureNotify on root window so we're notified when monitors change */
+static void
+initstructurenotify(void)
+{
+	XSelectInput(dpy, root, StructureNotifyMask);
 }
 
 /* get item of given window */
@@ -774,6 +784,10 @@ readevent(void)
 			if ((item = getitem(ev.xmotion.window)) != NULL)
 				resettime(item);
 			break;
+		case ConfigureNotify:   /* monitor arrangement changed */
+			if (ev.xproperty.window == root)
+				initmonitor();
+			break;
 		}
 	}
 }
@@ -921,6 +935,7 @@ main(int argc, char *argv[])
 	initdc();
 	initgeom();
 	initatoms();
+	initstructurenotify();
 
 	/* Make stdin nonblocking */
 	if ((flags = fcntl(STDIN_FILENO, F_GETFL)) == -1)
