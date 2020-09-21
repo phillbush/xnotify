@@ -84,7 +84,7 @@ To create a named pipe for XNotify, you can place the following in your `~/.xini
 
 	rm -f /tmp/xnotify.fifo
 	mkfifo /tmp/xnotify.fifo
-	xnotify -s 10 </tmp/xnotify.fifo 3<>/tmp/xnotify.fifo &
+	xnotify </tmp/xnotify.fifo 3<>/tmp/xnotify.fifo &
 
 To create a notification with a image, input to XNotify a line beginning
 with `IMG:/path/to/file.png` followed by a tab.  For example:
