@@ -19,6 +19,7 @@
 /* macros */
 #define DEFWIDTH            350     /* default width of a notification */
 #define MIN(x,y)            ((x)<(y)?(x):(y))
+#define MAX(x,y)            ((x)>(y)?(x):(y))
 #define BETWEEN(x, a, b)    ((a) <= (x) && (x) <= (b))
 
 /* X stuff */
@@ -42,7 +43,7 @@ static struct DC dc;
 static struct Geometry geom;
 static struct Item *head;
 static struct Item *tail;
-static int remap = 0;           /* whether we should remap item windows */
+static int change = 0;          /* whether the queue of notifications changed */
 
 /* flags */
 static int oflag = 0;           /* whether to terminate after the first notifications timeout is reached */
@@ -84,6 +85,13 @@ getresources(void)
 	if (XrmGetResource(xdb, "xnotify.gap", "*", &type, &xval) == True)
 		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
 			config.gap_pixels = n;
+	if (XrmGetResource(xdb, "xnotify.imageWidth", "*", &type, &xval) == True)
+		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
+			config.image_pixels = n;
+	if (XrmGetResource(xdb, "xnotify.shrink", "*", &type, &xval) == True)
+		config.shrink = (strcasecmp(xval.addr, "true") == 0 ||
+		                strcasecmp(xval.addr, "on") == 0 ||
+		                strcasecmp(xval.addr, "1") == 0);
 }
 
 /* get configuration from commmand-line */
@@ -321,7 +329,7 @@ initdc(void)
 	parsefonts(config.font);
 
 	/* compute paddings */
-	geom.pad = dc.fonts[0]->height;
+	dc.texth = dc.fonts[0]->height;
 }
 
 /* compute geometry of notifications */
@@ -335,45 +343,13 @@ initgeom(void)
 	if (geom.w == 0)
 		geom.w = DEFWIDTH;
 	if (geom.h == 0)
-		geom.h = geom.pad * 3 + geom.pad * 2;
+		geom.h = dc.texth * 3;
 
 	/* update notification position */
 	geom.x += mon.x;
 	geom.y += mon.y;
-	switch (geom.gravity) {
-	case NorthWestGravity:
-		break;
-	case NorthGravity:
-		geom.x += (mon.w - geom.w) / 2 - config.border_pixels;
-		break;
-	case NorthEastGravity:
-		geom.x += mon.w - geom.w - config.border_pixels * 2;
-		break;
-	case WestGravity:
-		geom.y += (mon.h - geom.h) / 2 - config.border_pixels;
-		break;
-	case CenterGravity:
-		geom.x += (mon.w - geom.w) / 2 - config.border_pixels;
-		geom.y += (mon.h - geom.h) / 2 - config.border_pixels;
-		break;
-	case EastGravity:
-		geom.x += mon.w - geom.w - config.border_pixels * 2;
-		geom.y += (mon.h - geom.h) / 2 - config.border_pixels;
-		break;
-	case SouthWestGravity:
-		geom.y += mon.h - geom.h - config.border_pixels * 2;
-		break;
-	case SouthGravity:
-		geom.x += (mon.w - geom.w) / 2 - config.border_pixels;
-		geom.y += mon.h - geom.h - config.border_pixels * 2;
-		break;
-	case SouthEastGravity:
-		geom.x += mon.w - geom.w - config.border_pixels * 2;
-		geom.y += mon.h - geom.h - config.border_pixels * 2;
-		break;
-	}
 
-	geom.imagesize = geom.h - geom.pad;
+	geom.imagesize = (config.image_pixels) ? config.image_pixels : geom.h - dc.texth;
 	if (geom.imagesize < 0)
 		geom.imagesize = 0;
 }
@@ -406,7 +382,7 @@ getitem(Window win)
 static void
 copypixmap(struct Item *item)
 {
-	XCopyArea(dpy, item->pixmap, item->win, dc.gc, 0, 0, geom.w, geom.h, 0, 0);
+	XCopyArea(dpy, item->pixmap, item->win, dc.gc, 0, 0, item->w, item->h, 0, 0);
 }
 
 /* load and scale image */
@@ -478,12 +454,11 @@ loadimage(const char *file)
 }
 
 /* create window for item */
-static Window
-createwindow(void)
+static void
+createwindow(struct Item *item)
 {
 	XClassHint classhint = {"XNotify", "XNotify"};
 	XSetWindowAttributes swa;
-	Window win;
 
 	swa.override_redirect = True;
 	swa.background_pixel = dc.background.pixel;
@@ -491,22 +466,21 @@ createwindow(void)
 	swa.save_under = True;  /* pop-up windows should save_under */
 	swa.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask;
 
-	win = XCreateWindow(dpy, root, geom.x, geom.y, geom.w, geom.h, config.border_pixels,
-	                    CopyFromParent, CopyFromParent, CopyFromParent,
-	                    CWOverrideRedirect | CWBackPixel | CWBorderPixel |
-	                    CWSaveUnder | CWEventMask, &swa);
+	/* windows are created at 0,0 position for they'll be moved later */
+	item->win = XCreateWindow(dpy, root, 0, 0, item->w, item->h, config.border_pixels,
+	                          CopyFromParent, CopyFromParent, CopyFromParent,
+	                          CWOverrideRedirect | CWBackPixel | CWBorderPixel |
+	                          CWSaveUnder | CWEventMask, &swa);
 
-	XSetClassHint(dpy, win, &classhint);
+	XSetClassHint(dpy, item->win, &classhint);
 
-	XStoreName(dpy, win, "XNotify");
-	XChangeProperty(dpy, win, netatom[NetWMName], utf8string, 8, PropModeReplace,
+	XStoreName(dpy, item->win, "XNotify");
+	XChangeProperty(dpy, item->win, netatom[NetWMName], utf8string, 8, PropModeReplace,
 	                (unsigned char *)"XNotify", strlen("XNotify"));
-	XChangeProperty(dpy, win, netatom[NetWMWindowType], XA_ATOM, 32, PropModeReplace,
+	XChangeProperty(dpy, item->win, netatom[NetWMWindowType], XA_ATOM, 32, PropModeReplace,
 	                (unsigned char *)&netatom[NetWMWindowTypeNotification], 1L);
-	XChangeProperty(dpy, win, netatom[NetWMState], XA_ATOM, 32, PropModeReplace,
+	XChangeProperty(dpy, item->win, netatom[NetWMState], XA_ATOM, 32, PropModeReplace,
 	                (unsigned char *)&netatom[NetWMStateAbove], 1L);
-
-	return win;
 }
 
 /* get next utf8 char from s return its codepoint and set next_ret to pointer to end of character */
@@ -647,14 +621,14 @@ drawitem(struct Item *item)
 	XftDraw *draw;
 	int x, y;
 
-	x = geom.pad;
-	y = geom.pad;
-	item->pixmap = XCreatePixmap(dpy, item->win, geom.w, geom.h, depth);
+	x = dc.texth;
+	y = dc.texth;
+	item->pixmap = XCreatePixmap(dpy, item->win, item->w, item->h, depth);
 	draw = XftDrawCreate(dpy, item->pixmap, visual, colormap);
 
 	/* draw background */
 	XSetForeground(dpy, dc.gc, dc.background.pixel);
-	XFillRectangle(dpy, item->pixmap, dc.gc, 0, 0, geom.w, geom.h);
+	XFillRectangle(dpy, item->pixmap, dc.gc, 0, 0, item->w, item->h);
 
 	/* draw image */
 	if (item->image) {
@@ -667,11 +641,11 @@ drawitem(struct Item *item)
 
 	/* draw text */
 	if (!item->body)
-		y = (geom.h - geom.pad) /2;
-	drawtext(draw, &dc.foreground, x, y, geom.pad, item->title);
-	y = geom.h - geom.pad * 2;
+		y = (item->h - dc.texth) /2;
+	drawtext(draw, &dc.foreground, x, y, dc.texth, item->title);
+	y = item->h - dc.texth * 2;
 	if (item->body)
-		drawtext(draw, &dc.foreground, x, y, geom.pad, item->body);
+		drawtext(draw, &dc.foreground, x, y, dc.texth, item->body);
 
 	XftDrawDestroy(draw);
 }
@@ -688,15 +662,15 @@ static void
 additem(const char *title, const char *body, const char *file)
 {
 	struct Item *item;
+	int titlew, bodyw;
+	int w, h;
 
 	if ((item = malloc(sizeof *item)) == NULL)
 		err(1, "malloc");
-
 	item->next = NULL;
 	item->title = strdup(title);
 	item->body = (body) ? strdup(body) : NULL;
 	item->image = (file) ? loadimage(file) : NULL;
-	item->win = createwindow();
 	if (!head)
 		head = item;
 	else
@@ -704,10 +678,33 @@ additem(const char *title, const char *body, const char *file)
 	item->prev = tail;
 	tail = item;
 
+	/* compute notification height */
+	h = (item->body) ? (dc.texth * 4) : (dc.texth * 2);
+	h = dc.texth + ((item->image) ? MAX(h, geom.imagesize) : h);
+	item->h = MAX(h, geom.h);
+
+	/* compute notification width */
+	if (config.shrink) {
+		titlew = drawtext(NULL, NULL, 0, 0, 0, item->title);
+		bodyw = (item->body) ? drawtext(NULL, NULL, 0, 0, 0, item->body) : 0;
+		w = MAX(titlew, bodyw);
+		if (item->image) {
+			w += geom.imagesize + dc.texth * 2;
+		} else {
+			w += dc.texth * 2;
+		}
+		item->w = MIN(w, geom.w);
+	} else {
+		item->w = geom.w;
+	}
+
+	/* call functions that set the item */
+	createwindow(item);
 	resettime(item);
 	drawitem(item);
 
-	remap = 1;
+	/* a new item was added to the queue, so the queue changed */
+	change = 1;
 }
 
 /* delete item */
@@ -729,7 +726,7 @@ delitem(struct Item *item)
 	else
 		tail = item->prev;
 
-	remap = 1;
+	change = 1;
 }
 
 /* read stdin */
@@ -807,24 +804,64 @@ timeitems(void)
 }
 
 static void
-mapitems(void)
+moveitems(void)
 {
 	struct Item *item;
-	size_t i;
-	int y;
+	int x, y;
+	int h = 0;
 
-	for (i = 0, item = head; item; i++, item = item->next) {
-		if (geom.direction == DownWards) {
-			y = geom.y + i * (geom.h + config.gap_pixels + config.border_pixels * 2);
-		} else {
-			y = geom.y - i * (geom.h + config.gap_pixels + config.border_pixels * 2);
+	for (item = head; item; item = item->next) {
+		switch (geom.gravity) {
+		case NorthWestGravity:
+			x = geom.x;
+			y = geom.y;
+			break;
+		case NorthGravity:
+			x = geom.x + (mon.w - item->w) / 2 - config.border_pixels;
+			y = geom.y;
+			break;
+		case NorthEastGravity:
+			x = geom.x + mon.w - item->w - config.border_pixels * 2;
+			y = geom.y;
+			break;
+		case WestGravity:
+			x = geom.x;
+			y = geom.y + (mon.h - item->h) / 2 - config.border_pixels;
+			break;
+		case CenterGravity:
+			x = geom.x + (mon.w - item->w) / 2 - config.border_pixels;
+			y = geom.y + (mon.h - item->h) / 2 - config.border_pixels;
+			break;
+		case EastGravity:
+			x = geom.x + mon.w - item->w - config.border_pixels * 2;
+			y = geom.y + (mon.h - item->h) / 2 - config.border_pixels;
+			break;
+		case SouthWestGravity:
+			x = geom.x;
+			y = geom.y + mon.h - item->h - config.border_pixels * 2;
+			break;
+		case SouthGravity:
+			x = geom.x + (mon.w - item->w) / 2 - config.border_pixels;
+			y = geom.y + mon.h - item->h - config.border_pixels * 2;
+			break;
+		case SouthEastGravity:
+			x = geom.x + mon.w - item->w - config.border_pixels * 2;
+			y = geom.y + mon.h - item->h - config.border_pixels * 2;
+			break;
 		}
-		XMoveWindow(dpy, item->win, geom.x, y);
+
+		if (geom.direction == DownWards)
+			y += h;
+		else
+			y -= h;
+		h += item->h + config.gap_pixels + config.border_pixels * 2;
+
+		XMoveWindow(dpy, item->win, x, y);
 		XMapWindow(dpy, item->win);
 		copypixmap(item);
 	}
 
-	remap = 0;
+	change = 0;
 }
 
 /* destroy all notification items */
@@ -920,8 +957,8 @@ main(int argc, char *argv[])
 			}
 		}
 		done += timeitems();
-		if (remap)
-			mapitems();
+		if (change)
+			moveitems();
 		timeout = (head) ? 1000 : -1;
 		XFlush(dpy);
 

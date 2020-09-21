@@ -11,9 +11,13 @@ static struct Config config = {
 	.geometryspec = "0x0+0+0",
 	.gravityspec = "NE",
 
-	/* size of border and gaps, in pixels, */
+	/* size of border, gaps and image (in pixels) */
 	.border_pixels = 2,
 	.gap_pixels = 7,
+	.image_pixels = 80,     /* if 0, the image will fit the notification */
+
+	/* set to nonzero to shrink notification width to its content size */
+	.shrink = 0,
 
 	/* time, in seconds, for a notification to stay alive */
 	.sec = 10

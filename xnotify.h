@@ -21,6 +21,9 @@ struct Config {
 
 	int border_pixels;
 	int gap_pixels;
+	int image_pixels;
+
+	int shrink;
 
 	int sec;
 };
@@ -43,6 +46,7 @@ struct DC {
 	FcPattern *pattern;
 	XftFont **fonts;
 	size_t nfonts;
+	int texth;          /* text height, also used for padding */
 };
 
 /* geometry structure */
@@ -52,7 +56,6 @@ struct Geometry {
 	int x, y;
 	int w, h;
 	int imagesize;
-	int pad;        /* padding */
 };
 
 /* notification item structure */
@@ -63,6 +66,8 @@ struct Item {
 	char *body;
 
 	time_t time;
+
+	int w, h;
 
 	Imlib_Image image;
 	Drawable pixmap;
