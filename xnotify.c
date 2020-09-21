@@ -345,10 +345,6 @@ initgeom(void)
 	if (geom.h == 0)
 		geom.h = dc.texth * 3;
 
-	/* update notification position */
-	geom.x += mon.x;
-	geom.y += mon.y;
-
 	geom.imagesize = (config.image_pixels) ? config.image_pixels : geom.h - dc.texth;
 	if (geom.imagesize < 0)
 		geom.imagesize = 0;
@@ -811,42 +807,38 @@ moveitems(void)
 	int h = 0;
 
 	for (item = head; item; item = item->next) {
+		x = geom.x + mon.x;
+		y = geom.y + mon.y;
 		switch (geom.gravity) {
 		case NorthWestGravity:
-			x = geom.x;
-			y = geom.y;
 			break;
 		case NorthGravity:
-			x = geom.x + (mon.w - item->w) / 2 - config.border_pixels;
-			y = geom.y;
+			x += (mon.w - item->w) / 2 - config.border_pixels;
 			break;
 		case NorthEastGravity:
-			x = geom.x + mon.w - item->w - config.border_pixels * 2;
-			y = geom.y;
+			x += mon.w - item->w - config.border_pixels * 2;
 			break;
 		case WestGravity:
-			x = geom.x;
-			y = geom.y + (mon.h - item->h) / 2 - config.border_pixels;
+			y += (mon.h - item->h) / 2 - config.border_pixels;
 			break;
 		case CenterGravity:
-			x = geom.x + (mon.w - item->w) / 2 - config.border_pixels;
-			y = geom.y + (mon.h - item->h) / 2 - config.border_pixels;
+			x += (mon.w - item->w) / 2 - config.border_pixels;
+			y += (mon.h - item->h) / 2 - config.border_pixels;
 			break;
 		case EastGravity:
-			x = geom.x + mon.w - item->w - config.border_pixels * 2;
-			y = geom.y + (mon.h - item->h) / 2 - config.border_pixels;
+			x += mon.w - item->w - config.border_pixels * 2;
+			y += (mon.h - item->h) / 2 - config.border_pixels;
 			break;
 		case SouthWestGravity:
-			x = geom.x;
-			y = geom.y + mon.h - item->h - config.border_pixels * 2;
+			y += mon.h - item->h - config.border_pixels * 2;
 			break;
 		case SouthGravity:
-			x = geom.x + (mon.w - item->w) / 2 - config.border_pixels;
-			y = geom.y + mon.h - item->h - config.border_pixels * 2;
+			x += (mon.w - item->w) / 2 - config.border_pixels;
+			y += mon.h - item->h - config.border_pixels * 2;
 			break;
 		case SouthEastGravity:
-			x = geom.x + mon.w - item->w - config.border_pixels * 2;
-			y = geom.y + mon.h - item->h - config.border_pixels * 2;
+			x += mon.w - item->w - config.border_pixels * 2;
+			y += mon.h - item->h - config.border_pixels * 2;
 			break;
 		}
 
