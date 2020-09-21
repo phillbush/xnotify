@@ -38,11 +38,13 @@ Replace
 .B <WIDTH>
 by the desired width,
 .B <HEIGHT>
-by the desired height, and so on.
+by the desired minimum height, and so on.
+The height is the minimum height of a notification;
+a notification that contains a body or an image can get bigger than this minimum height.
 A value of 0 sets a field to the default value.
 So, for example,
 .B -g 0x80+0+0
-set the height to 80 pixels while maintaining other values to the default.
+set the minimum height to 80 pixels while maintaining other values to the default.
 .B <XOFFSET>
 and
 .B <YOFFSET>
