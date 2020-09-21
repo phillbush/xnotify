@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/63266536/93690391-49b11780-fac7-11ea-96da-ab850dca1b9f.gif", title="demo"/>
+  <img src="https://user-images.githubusercontent.com/63266536/93797439-c65d0680-fc2b-11ea-80e3-10bbd6f65dcb.gif", title="demo"/>
 </p>
 
 # XNotify
