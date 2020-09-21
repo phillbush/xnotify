@@ -8,17 +8,26 @@ XNotify displays a notification on the screen.
 XNotify receives a notification specification in stdin and shows a
 notification for the user on the screen.
 
+See the [manual](https://github.com/phillbush/xnotify/wiki) for more information on how xnotify works.
+
 
 ## Features
 
 XNotify comes with the following features:
 
-* xnotify receives notifications from stdin, you can use a fifo to echo
-  notifications on the fly like `echo Hello World > /tmp/xnotify.fifo`
+* xnotify receives notifications from stdin.
+  You can use a fifo to echo notifications on the fly like
+
+  `echo Hello World > /tmp/xnotify.fifo`
+
 * xnotify queue notifications and display them one above the other.
+
 * Image support, just prefix the notification string with `IMG:/path/to/the/file.png` and a tab.
+
 * Multiple monitor support.  You can set the monitor with the `-m` option.
+
 * Support for fallback fonts (you can set more than one fonts, that will be tried in order).
+
 * X resources support (you don't need to recompile Xnotify for configuring it).
 
 
@@ -56,10 +65,9 @@ the manual file `./xnotify.1` into `${MANPREFIX}/man1/` directory.
 
 ## Running XNotify
 
-XNotify receives as input a notification specification where each line is
-a notification entry.  Each line is made out of a notification title and
-a notification body separated by any number of tabs.  Lines without
-title are ignored.
+XNotify receives as input one line per notification.
+Each line is made out of a notification title and a notification body separated by any number of tabs.
+Lines without a title are ignored.
 
 The following is an example of how to run XNotify
 
@@ -68,11 +76,11 @@ The following is an example of how to run XNotify
 This line means: read notifications from stdin, display
 the notifications on the north east (`-G NE`) of the monitor 0 (`-m 0`),
 that is, on the upper right corner of the first monitor.  The
-notifications should be placed -10 pixels to the left and +10 pixels
+notifications should be placed 10 pixels to the left and 10 pixels
 down (thus creating a 10 pixel gap with the upper right corner).
 Each notification stay alive for 15 seconds.
 
-To create a fifo for XNotify, you can place the following in your `~/.xinitrc`:
+To create a named pipe for XNotify, you can place the following in your `~/.xinitrc`:
 
 	rm -f /tmp/xnotify.fifo
 	mkfifo /tmp/xnotify.fifo
@@ -92,5 +100,3 @@ run `xnotify` with the `-g` option set to the notification size in
 The argument for the `-g` option has the form `[WIDTHxHEIGHT][{+-}XPOS{+-}YPOS]`.
 Parts between square brackets are optional.
 `{+-}` means to chose either `+` or `-`.
-
-See the [manual](https://github.com/phillbush/xnotify/wiki) for more information on how xnotify works.
