@@ -18,7 +18,7 @@ XNotify comes with the following features:
 * xnotify receives notifications from stdin.
   You can use a fifo to echo notifications on the fly like
 
-  `echo Hello World > /tmp/xnotify.fifo`
+  `echo Hello World > /path/to/xnotify.fifo`
 
 * xnotify queue notifications and display them one above the other.
 
@@ -83,6 +83,7 @@ Each notification stay alive for 15 seconds.
 To create a named pipe for XNotify, you can place the following in your `~/.xinitrc`:
 
 	XNOTIFY_FIFO="$HOME/.cache/xnotify.fifo"
+	export XNOTIFY_FIFO
 	rm -f $XNOTIFY_FIFO
 	mkfifo $XNOTIFY_FIFO
 	xnotify <$XNOTIFY_FIFO 3<>$XNOTIFY_FIFO &
@@ -90,7 +91,7 @@ To create a named pipe for XNotify, you can place the following in your `~/.xini
 To create a notification with a image, input to XNotify a line beginning
 with `IMG:/path/to/file.png` followed by a tab.  For example:
 
-	$ printf 'IMG:/path/to/file.png\tThis is a notification\n' > /tmp/xnotify.fifo
+	$ printf 'IMG:/path/to/file.png\tThis is a notification\n' > $XNOTIFY_FIFO
 
 To use a different size other than the default for the notifications,
 run `xnotify` with the `-g` option set to the notification size in
