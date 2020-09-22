@@ -91,7 +91,7 @@ To create a named pipe for XNotify, you can place the following in your `~/.xini
 To create a notification with a image, input to XNotify a line beginning
 with `IMG:/path/to/file.png` followed by a tab.  For example:
 
-	$ printf 'IMG:/path/to/file.png\tThis is a notification\n' > $XNOTIFY_FIFO
+	$ printf 'IMG:/path/to/file.png\tThis is a notification\n' > /path/to/pipe
 
 To use a different size other than the default for the notifications,
 run `xnotify` with the `-g` option set to the notification size in
