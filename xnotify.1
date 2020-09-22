@@ -171,9 +171,10 @@ the following lines can be placed on
 .BR ~/.xinitrc :
 .IP
 .EX
-rm \-f /tmp/xnotify.fifo
-mkfifo /tmp/xnotify.fifo
-xnotify </tmp/xnotify.fifo 3<>/tmp/xnotify.fifo &
+XNOTIFY_FIFO="$HOME/.cache/xnotify.fifo"
+rm \-f $XNOTIFY_FIFO
+mkfifo $XNOTIFY_FIFO
+xnotify <$XNOTIFY_FIFO 3<>$XNOTIFY_FIFO &
 .EE
 .PP
 Then a notification can be created by echoing into the named pipe:
