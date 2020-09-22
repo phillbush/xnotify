@@ -32,11 +32,9 @@ static char *xrm;
 static int screen;
 static int depth;
 static int xfd;
-static struct Monitor mon = {0};
+static struct Monitor mon;
 static Atom utf8string;
 static Atom netatom[NetLast];
-
-/* drawing context */
 static struct DC dc;
 
 /* notifications */
@@ -980,4 +978,6 @@ main(int argc, char *argv[])
 	/* close connection to server */
 	XrmDestroyDatabase(xdb);
 	XCloseDisplay(dpy);
+
+	return 0;
 }
