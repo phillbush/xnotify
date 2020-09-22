@@ -82,7 +82,7 @@ Each notification stay alive for 15 seconds.
 
 To create a named pipe for XNotify, you can place the following in your `~/.xinitrc`:
 
-	XNOTIFY_FIFO="~/.cache/xnotify.fifo"
+	XNOTIFY_FIFO="$HOME/.cache/xnotify.fifo"
 	rm -f $XNOTIFY_FIFO
 	mkfifo $XNOTIFY_FIFO
 	xnotify <$XNOTIFY_FIFO 3<>$XNOTIFY_FIFO &
