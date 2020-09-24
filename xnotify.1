@@ -168,10 +168,15 @@ Each notification stay alive for 15 seconds.
 .PP
 To create a named pipe for XNotify,
 the following lines can be placed on
-.BR ~/.xinitrc :
+.BR ~/.xinitrc .
+This will create a named pipe unique to your current X display in your home directory at
+.BR ~/.cache .
+Then, it will open
+.B xnotify
+in the background, reading from this named pipe.
 .IP
 .EX
-XNOTIFY_FIFO="$HOME/.cache/xnotify.fifo"
+XNOTIFY_FIFO="$HOME/.cache/xnotify$DISPLAY.fifo"
 export XNOTIFY_FIFO
 rm \-f $XNOTIFY_FIFO
 mkfifo $XNOTIFY_FIFO

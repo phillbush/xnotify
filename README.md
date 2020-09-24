@@ -80,9 +80,11 @@ notifications should be placed 10 pixels to the left and 10 pixels
 down (thus creating a 10 pixel gap with the upper right corner).
 Each notification stay alive for 15 seconds.
 
-To create a named pipe for XNotify, you can place the following in your `~/.xinitrc`:
+To create a named pipe for XNotify, you can place the following in your `~/.xinitrc`.
+This will create a named pipe unique to your current X display in your home directory at `~/.cache`.
+Then, it will open xnotify in the background, reading from this named pipe.
 
-	XNOTIFY_FIFO="$HOME/.cache/xnotify.fifo"
+	XNOTIFY_FIFO="$HOME/.cache/xnotify$DISPLAY.fifo"
 	export XNOTIFY_FIFO
 	rm -f $XNOTIFY_FIFO
 	mkfifo $XNOTIFY_FIFO
