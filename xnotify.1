@@ -199,6 +199,27 @@ For example:
 $ printf 'IMG:/path/to/file.png\etThis is a notification\en' > $XNOTIFY_FIFO
 .EE
 .PP
+.B xnotify
+does not read notifications from dbus.
+For
+.B xnotify
+to read dbus notifications,
+its stdin must be fed with the output of
+.IR tiramisu (1)
+parsed by
+.IR jq (1).
+The following line makes
+.IR tiramisu (1)
+send dbus notifications to
+.BR xnotify .
+This line can be added to
+.B ~/.xinitrc
+after the line calling
+.BR xnotify .
+.IP
+.EX
+tiramisu -j | jq --raw-output --unbuffered '.summary + "\et" + .body' > $XNOTIFY_FIFO &
+.EE
 .SH SEE ALSO
 .IR tiramisu (1),
 .IR herbe (1)

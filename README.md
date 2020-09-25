@@ -95,6 +95,12 @@ with `IMG:/path/to/file.png` followed by a tab.  For example:
 
 	$ printf 'IMG:/path/to/file.png\tThis is a notification\n' > /path/to/xnotify.fifo
 
+To read dbus notifications from stdin, you'll need [tiramisu](https://github.com/Sweets/tiramisu).
+You'll also need [jq](https://stedolan.github.io/jq/) in order to parse tiramisu's JSON output.
+Then add the following line to your `.xinitrc`, after calling xnotify.
+
+	$ tiramisu -j | jq --raw-output --unbuffered '.summary + "\t" + .body' > /path/to/xnotify.fifo &
+
 To use a different size other than the default for the notifications,
 run `xnotify` with the `-g` option set to the notification size in
 `WIDTHxHEIGHT`.  For example:
