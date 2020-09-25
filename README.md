@@ -93,13 +93,13 @@ Then, it will open xnotify in the background, reading from this named pipe.
 To create a notification with a image, input to XNotify a line beginning
 with `IMG:/path/to/file.png` followed by a tab.  For example:
 
-	$ printf 'IMG:/path/to/file.png\tThis is a notification\n' > /path/to/xnotify.fifo
+	$ printf 'IMG:/path/to/file.png\tThis is a notification\n' > $XNOTIFY_FIFO
 
 To read dbus notifications from stdin, you'll need [tiramisu](https://github.com/Sweets/tiramisu).
 You'll also need [jq](https://stedolan.github.io/jq/) in order to parse tiramisu's JSON output.
-Then add the following line to your `.xinitrc`, after calling xnotify.
+Then add the following line to your `.xinitrc`, after the line calling xnotify.
 
-	$ tiramisu -j | jq --raw-output --unbuffered '.summary + "\t" + .body' > /path/to/xnotify.fifo &
+	$ tiramisu -j | jq --raw-output --unbuffered '.summary + "\t" + .body' > $XNOTIFY_FIFO &
 
 To use a different size other than the default for the notifications,
 run `xnotify` with the `-g` option set to the notification size in
