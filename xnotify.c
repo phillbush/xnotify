@@ -329,7 +329,7 @@ initdc(void)
 	/* try to get font */
 	parsefonts(config.font);
 
-	/* compute paddings */
+	/* compute text height */
 	dc.texth = dc.fonts[0]->height;
 }
 
@@ -644,12 +644,15 @@ drawitem(struct Item *item)
 	}
 
 	/* draw text */
-	if (!item->body)
-		y = (item->h - dc.texth) /2;
+	y = (item->h - dc.texth) / 2;
+	if (item->body){
+		y -= dc.texth;
+	}
 	drawtext(draw, &dc.foreground, x, y, dc.texth, item->title);
-	y = item->h - dc.texth * 2;
-	if (item->body)
+	if (item->body) {
+		y += 2 * dc.texth;
 		drawtext(draw, &dc.foreground, x, y, dc.texth, item->body);
+	}
 
 	XftDrawDestroy(draw);
 }
