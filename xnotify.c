@@ -643,7 +643,7 @@ drawitem(struct Item *item)
 {
 	XftDraw *draw;
 	int x, y;
-	int xaligned;
+	int xaligned, oldx;
 
 	x = dc.texth;
 	y = dc.texth;
@@ -664,6 +664,7 @@ drawitem(struct Item *item)
 	}
 
 	/* draw text */
+	oldx = x;
 	switch (config.alignment) {
 	case LeftAlignment:
 		break;
@@ -685,6 +686,7 @@ drawitem(struct Item *item)
 
 	/* draw text body */
 	if (item->body) {
+		x = oldx;
 		switch (config.alignment) {
 		case LeftAlignment:
 			break;
