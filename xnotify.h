@@ -11,7 +11,8 @@ enum {
 
 /* configuration structure */
 struct Config {
-	const char *font;
+	const char *titlefont;
+	const char *bodyfont;
 
 	const char *background_color;
 	const char *foreground_color;
@@ -23,6 +24,8 @@ struct Config {
 	int border_pixels;
 	int gap_pixels;
 	int image_pixels;
+	int leading_pixels;
+	int padding_pixels;
 
 	int alignment;
 	int shrink;
@@ -43,8 +46,10 @@ struct DC {
 	XftColor border;
 
 	GC gc;
+};
 
-	/* fonts */
+/* font context structure */
+struct Fonts {
 	FcPattern *pattern;
 	XftFont **fonts;
 	size_t nfonts;

@@ -35,7 +35,10 @@ static int xfd;
 static struct Monitor mon;
 static Atom utf8string;
 static Atom netatom[NetLast];
+
+/* drawing context */
 static struct DC dc;
+static struct Fonts titlefnt, bodyfnt;
 
 /* notifications */
 static struct Geometry geom;
@@ -65,8 +68,10 @@ getresources(void)
 	unsigned long n;
 	char *type;
 
-	if (XrmGetResource(xdb, "xnotify.font", "*", &type, &xval) == True)
-		config.font = xval.addr;
+	if (XrmGetResource(xdb, "xnotify.title.font", "*", &type, &xval) == True)
+		config.titlefont = xval.addr;
+	if (XrmGetResource(xdb, "xnotify.body.font", "*", &type, &xval) == True)
+		config.bodyfont = xval.addr;
 	if (XrmGetResource(xdb, "xnotify.background", "*", &type, &xval) == True)
 		config.background_color = xval.addr;
 	if (XrmGetResource(xdb, "xnotify.foreground", "*", &type, &xval) == True)
@@ -86,6 +91,12 @@ getresources(void)
 	if (XrmGetResource(xdb, "xnotify.imageWidth", "*", &type, &xval) == True)
 		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
 			config.image_pixels = n;
+	if (XrmGetResource(xdb, "xnotify.leading", "*", &type, &xval) == True)
+		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
+			config.leading_pixels = n;
+	if (XrmGetResource(xdb, "xnotify.padding", "*", &type, &xval) == True)
+		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
+			config.padding_pixels = n;
 	if (XrmGetResource(xdb, "xnotify.shrink", "*", &type, &xval) == True)
 		config.shrink = (strcasecmp(xval.addr, "true") == 0 ||
 		                strcasecmp(xval.addr, "on") == 0 ||
@@ -133,18 +144,6 @@ getoptions(int argc, char *argv[])
 
 	if (argc)
 		usage();
-}
-
-/* check for conflicts in configuration */
-static void
-checkconfig(void)
-{
-	/*
-	 * if the notification shrinks to the text width,
-	 * we don't need to align text
-	 */
-	if (config.shrink)
-		config.alignment = LeftAlignment;
 }
 
 /* get XftColor from color string */
@@ -271,18 +270,18 @@ parsegravityspec(int *gravity, int *direction)
 
 /* parse font string */
 static void
-parsefonts(const char *s)
+parsefonts(struct Fonts *fnt, const char *s)
 {
 	const char *p;
 	char buf[1024];
 	size_t nfont = 0;
 
-	dc.nfonts = 1;
+	fnt->nfonts = 1;
 	for (p = s; *p; p++)
 		if (*p == ',')
-			dc.nfonts++;
+			fnt->nfonts++;
 
-	if ((dc.fonts = calloc(dc.nfonts, sizeof *dc.fonts)) == NULL)
+	if ((fnt->fonts = calloc(fnt->nfonts, sizeof *fnt->fonts)) == NULL)
 		err(1, "calloc");
 
 	p = s;
@@ -300,11 +299,12 @@ parsefonts(const char *s)
 			p++;
 		buf[i] = '\0';
 		if (nfont == 0)
-			if ((dc.pattern = FcNameParse((FcChar8 *)buf)) == NULL)
+			if ((fnt->pattern = FcNameParse((FcChar8 *)buf)) == NULL)
 				errx(1, "the first font in the cache must be loaded from a font string");
-		if ((dc.fonts[nfont++] = XftFontOpenName(dpy, screen, buf)) == NULL)
+		if ((fnt->fonts[nfont++] = XftFontOpenName(dpy, screen, buf)) == NULL)
 			errx(1, "cannot load font");
 	}
+	fnt->texth = fnt->fonts[0]->height;
 }
 
 /* query monitor information */
@@ -345,10 +345,8 @@ initdc(void)
 	dc.gc = XCreateGC(dpy, root, 0, NULL);
 
 	/* try to get font */
-	parsefonts(config.font);
-
-	/* compute text height */
-	dc.texth = dc.fonts[0]->height;
+	parsefonts(&titlefnt, config.titlefont);
+	parsefonts(&bodyfnt, config.bodyfont);
 }
 
 /* compute geometry of notifications */
@@ -362,9 +360,11 @@ initgeom(void)
 	if (geom.w == 0)
 		geom.w = DEFWIDTH;
 	if (geom.h == 0)
-		geom.h = dc.texth * 3;
+		geom.h = titlefnt.texth + config.padding_pixels * 2;
 
-	geom.imagesize = (config.image_pixels) ? config.image_pixels : geom.h - dc.texth;
+	geom.imagesize = (config.image_pixels)
+	               ? config.image_pixels
+	               : geom.h - config.padding_pixels;
 	if (geom.imagesize < 0)
 		geom.imagesize = 0;
 }
@@ -556,7 +556,7 @@ getnextutf8char(const char *s, const char **next_ret)
 
 /* get which font contains a given code point */
 static XftFont *
-getfontucode(FcChar32 ucode)
+getfontucode(struct Fonts *fnt, FcChar32 ucode)
 {
 	FcCharSet *fccharset = NULL;
 	FcPattern *fcpattern = NULL;
@@ -565,17 +565,17 @@ getfontucode(FcChar32 ucode)
 	XftResult result;
 	size_t i;
 
-	for (i = 0; i < dc.nfonts; i++)
-		if (XftCharExists(dpy, dc.fonts[i], ucode) == FcTrue)
-			return dc.fonts[i];
+	for (i = 0; i < fnt->nfonts; i++)
+		if (XftCharExists(dpy, fnt->fonts[i], ucode) == FcTrue)
+			return fnt->fonts[i];
 
 	/* create a charset containing our code point */
 	fccharset = FcCharSetCreate();
 	FcCharSetAddChar(fccharset, ucode);
 
-	/* create a pattern akin to the dc.pattern but containing our charset */
+	/* create a pattern akin to the fnt->pattern but containing our charset */
 	if (fccharset) {
-		fcpattern = FcPatternDuplicate(dc.pattern);
+		fcpattern = FcPatternDuplicate(fnt->pattern);
 		FcPatternAddCharSet(fcpattern, FC_CHARSET, fccharset);
 	}
 
@@ -590,22 +590,22 @@ getfontucode(FcChar32 ucode)
 	if (match) {
 		retfont = XftFontOpenPattern(dpy, match);
 		if (retfont && XftCharExists(dpy, retfont, ucode) == FcTrue) {
-			if ((dc.fonts = realloc(dc.fonts, dc.nfonts+1)) == NULL)
+			if ((fnt->fonts = realloc(fnt->fonts, fnt->nfonts+1)) == NULL)
 				err(1, "realloc");
-			dc.fonts[dc.nfonts] = retfont;
-			return dc.fonts[dc.nfonts++];
+			fnt->fonts[fnt->nfonts] = retfont;
+			return fnt->fonts[fnt->nfonts++];
 		} else {
 			XftFontClose(dpy, retfont);
 		}
 	}
 
 	/* in case no fount was found, return the first one */
-	return dc.fonts[0];
+	return fnt->fonts[0];
 }
 
 /* draw text into draw (if draw != NULL); return width of text glyphs */
 static int
-drawtext(XftDraw *draw, XftColor *color, int x, int y, unsigned h, const char *text)
+drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, const char *text)
 {
 	int textwidth = 0;
 
@@ -617,7 +617,7 @@ drawtext(XftDraw *draw, XftColor *color, int x, int y, unsigned h, const char *t
 		size_t len;
 
 		ucode = getnextutf8char(text, &next);
-		currfont = getfontucode(ucode);
+		currfont = getfontucode(fnt, ucode);
 
 		len = next - text;
 		XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)text, len, &ext);
@@ -626,7 +626,7 @@ drawtext(XftDraw *draw, XftColor *color, int x, int y, unsigned h, const char *t
 		if (draw) {
 			int texty;
 
-			texty = y + (h - (currfont->ascent + currfont->descent))/2 + currfont->ascent;
+			texty = y + (fnt->texth - (currfont->ascent + currfont->descent))/2 + currfont->ascent;
 			XftDrawStringUtf8(draw, color, currfont, x, texty, (XftChar8 *)text, len);
 			x += ext.xOff;
 		}
@@ -645,8 +645,8 @@ drawitem(struct Item *item)
 	int x, y;
 	int xaligned, oldx;
 
-	x = dc.texth;
-	y = dc.texth;
+	x = config.padding_pixels;
+	y = config.padding_pixels;
 	item->pixmap = XCreatePixmap(dpy, item->win, item->w, item->h, depth);
 	draw = XftDrawCreate(dpy, item->pixmap, visual, colormap);
 
@@ -669,40 +669,41 @@ drawitem(struct Item *item)
 	case LeftAlignment:
 		break;
 	case CenterAlignment:
-		xaligned = drawtext(NULL, NULL, 0, 0, 0, item->title);
-		xaligned = x + (item->w - x - dc.texth - xaligned) / 2;
+		xaligned = drawtext(&titlefnt, NULL, NULL, 0, 0, item->title);
+		xaligned = x + (item->w - x - titlefnt.texth - xaligned) / 2;
 		x = MAX(x, xaligned);
 		break;
 	case RightAlignment:
-		xaligned = drawtext(NULL, NULL, 0, 0, 0, item->title);
-		xaligned = x + (item->w - x - dc.texth - xaligned);
+		xaligned = drawtext(&titlefnt, NULL, NULL, 0, 0, item->title);
+		xaligned = x + (item->w - x - titlefnt.texth - xaligned);
 		x = MAX(x, xaligned);
 		break;
 	}
-	y = (item->h - dc.texth) / 2;
 	if (item->body)
-		y -= dc.texth;
-	drawtext(draw, &dc.foreground, x, y, dc.texth, item->title);
+		y = (item->h - config.leading_pixels) / 2 - titlefnt.texth;
+	else
+		y = (item->h - titlefnt.texth) / 2;
+	drawtext(&titlefnt, draw, &dc.foreground, x, y, item->title);
 
 	/* draw text body */
 	if (item->body) {
+		y += titlefnt.texth + config.leading_pixels;
 		x = oldx;
 		switch (config.alignment) {
 		case LeftAlignment:
 			break;
 		case CenterAlignment:
-			xaligned = drawtext(NULL, NULL, 0, 0, 0, item->body);
-			xaligned = x + (item->w - x - dc.texth - xaligned) / 2;
+			xaligned = drawtext(&bodyfnt, NULL, NULL, 0, 0, item->body);
+			xaligned = x + (item->w - x - bodyfnt.texth - xaligned) / 2;
 			x = MAX(x, xaligned);
 			break;
 		case RightAlignment:
-			xaligned = drawtext(NULL, NULL, 0, 0, 0, item->body);
-			xaligned = x + (item->w - x - dc.texth - xaligned);
+			xaligned = drawtext(&bodyfnt, NULL, NULL, 0, 0, item->body);
+			xaligned = x + (item->w - x - bodyfnt.texth - xaligned);
 			x = MAX(x, xaligned);
 			break;
 		}
-		y += 2 * dc.texth;
-		drawtext(draw, &dc.foreground, x, y, dc.texth, item->body);
+		drawtext(&bodyfnt, draw, &dc.foreground, x, y, item->body);
 	}
 
 	XftDrawDestroy(draw);
@@ -737,19 +738,23 @@ additem(const char *title, const char *body, const char *file)
 	tail = item;
 
 	/* compute notification height */
-	h = (item->body) ? (dc.texth * 4) : (dc.texth * 2);
-	h = dc.texth + ((item->image) ? MAX(h, geom.imagesize) : h);
+	if (item->body)
+		h = titlefnt.texth + bodyfnt.texth + config.padding_pixels + config.leading_pixels;
+	else
+		h = titlefnt.texth + config.padding_pixels;
+	
+	h = config.padding_pixels + ((item->image) ? MAX(h, geom.imagesize) : h);
 	item->h = MAX(h, geom.h);
 
 	/* compute notification width */
 	if (config.shrink) {
-		titlew = drawtext(NULL, NULL, 0, 0, 0, item->title);
-		bodyw = (item->body) ? drawtext(NULL, NULL, 0, 0, 0, item->body) : 0;
+		titlew = drawtext(&titlefnt, NULL, NULL, 0, 0, item->title);
+		bodyw = (item->body) ? drawtext(&bodyfnt, NULL, NULL, 0, 0, item->body) : 0;
 		w = MAX(titlew, bodyw);
 		if (item->image) {
-			w += geom.imagesize + dc.texth * 2;
+			w += geom.imagesize + config.padding_pixels * 2;
 		} else {
-			w += dc.texth * 2;
+			w += config.padding_pixels * 2;
 		}
 		item->w = MIN(w, geom.w);
 	} else {
@@ -981,7 +986,6 @@ main(int argc, char *argv[])
 	/* get configuration */
 	getresources();
 	getoptions(argc, argv);
-	checkconfig();
 
 	/* init stuff */
 	initmonitor();

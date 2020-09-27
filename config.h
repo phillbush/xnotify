@@ -1,6 +1,7 @@
 static struct Config config = {
 	/* fonts, separate different fonts with comma */
-	.font = "monospace:size=9",
+	.titlefont = "monospace:size=9:style=bold",
+	.bodyfont = "monospace:size=9",
 
 	/* colors */
 	.background_color = "#000000",
@@ -15,9 +16,11 @@ static struct Config config = {
 	.border_pixels = 2,
 	.gap_pixels = 7,
 	.image_pixels = 80,     /* if 0, the image will fit the notification */
+	.leading_pixels = 5,    /* space between title and body texts */
+	.padding_pixels = 10,   /* space around content */
 
 	/* text alignment, set to LeftAlignment, CenterAlignment or RightAlignment */
-	.alignment = LeftAlignment,
+	.alignment = RightAlignment,
 
 	/* set to nonzero to shrink notification width to its content size */
 	.shrink = 0,

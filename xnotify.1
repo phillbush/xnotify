@@ -108,11 +108,14 @@ on.
 .B xnotify
 understands the following X resources.
 .TP
-.B xnotify.font
-The fonts to drawn the text.
+.B xnotify.title.font
+The fonts to draw the notification title text.
 More than one font can be specified, separated by comma (,).
 If more than one font is specified, the first font with a given glyph
 is used to display that glyph on the screen.
+.TP
+.B xnotify.body.font
+The fonts to draw the notification body text.
 .TP
 .B xnotify.background
 The color of the notification background.
@@ -144,6 +147,12 @@ The gap between notifications.
 .TP
 .B xnotify.imageWidth
 The size of the image attached to the notification.
+.TP
+.B xnotify.leading
+The space between the title text and the body text.
+.TP
+.B xnotify.padding
+The space around the content inside the notification popup window.
 .TP
 .B xnotify.shrink
 If set to
