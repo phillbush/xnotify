@@ -146,11 +146,17 @@ getoptions(int argc, char *argv[])
 		usage();
 }
 
-/* get XftColor from color string */
+/*
+ * get XftColor *color from color string s
+ * if the variable error is nonzero, exit on error
+ * if the variable error is zero, return -1 on error
+ */
 static int
-ealloccolor(const char *s, XftColor *color)
+ealloccolor(const char *s, XftColor *color, int error)
 {
 	if (!XftColorAllocName(dpy, visual, colormap, s, color)) {
+		if (error)
+			errx(1, "could not allocate color: %s", s);
 		warnx("could not allocate color: %s", s);
 		return -1;
 	}
@@ -340,9 +346,9 @@ static void
 initdc(void)
 {
 	/* get colors */
-	ealloccolor(config.background_color,    &dc.background);
-	ealloccolor(config.foreground_color,    &dc.foreground);
-	ealloccolor(config.border_color,        &dc.border);
+	ealloccolor(config.background_color,    &dc.background, 1);
+	ealloccolor(config.foreground_color,    &dc.foreground, 1);
+	ealloccolor(config.border_color,        &dc.border, 1);
 
 	/* create common GC */
 	dc.gc = XCreateGC(dpy, root, 0, NULL);
@@ -744,11 +750,11 @@ additem(const char *title, const char *body, const char *file, const char *backg
 	tail = item;
 
 	/* allocate colors */
-	if (!background || ealloccolor(background, &item->background) == -1)
+	if (!background || ealloccolor(background, &item->background, 0) == -1)
 		item->background = dc.background;
-	if (!foreground || ealloccolor(foreground, &item->foreground) == -1)
+	if (!foreground || ealloccolor(foreground, &item->foreground, 0) == -1)
 		item->foreground = dc.foreground;
-	if (!border || ealloccolor(border, &item->border) == -1)
+	if (!border || ealloccolor(border, &item->border, 0) == -1)
 		item->border = dc.border;
 
 	/* compute notification height */
