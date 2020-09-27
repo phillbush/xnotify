@@ -1,3 +1,4 @@
+enum ItemOption {IMG, BG, FG, BRD, UNKNOWN};
 enum {DownWards, UpWards};
 enum {LeftAlignment, CenterAlignment, RightAlignment};
 enum {
@@ -75,6 +76,10 @@ struct Item {
 	time_t time;
 
 	int w, h;
+
+	XftColor background;
+	XftColor foreground;
+	XftColor border;
 
 	Imlib_Image image;
 	Drawable pixmap;

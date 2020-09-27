@@ -147,11 +147,14 @@ getoptions(int argc, char *argv[])
 }
 
 /* get XftColor from color string */
-static void
+static int
 ealloccolor(const char *s, XftColor *color)
 {
-	if (!XftColorAllocName(dpy, visual, colormap, s, color))
-		errx(1, "could not allocate color: %s", s);
+	if (!XftColorAllocName(dpy, visual, colormap, s, color)) {
+		warnx("could not allocate color: %s", s);
+		return -1;
+	}
+	return 0;
 }
 
 /* get number from *s into n, return 1 if error, update s to end of number */
@@ -651,7 +654,7 @@ drawitem(struct Item *item)
 	draw = XftDrawCreate(dpy, item->pixmap, visual, colormap);
 
 	/* draw background */
-	XSetForeground(dpy, dc.gc, dc.background.pixel);
+	XSetForeground(dpy, dc.gc, item->background.pixel);
 	XFillRectangle(dpy, item->pixmap, dc.gc, 0, 0, item->w, item->h);
 
 	/* draw image */
@@ -683,7 +686,7 @@ drawitem(struct Item *item)
 		y = (item->h - config.leading_pixels) / 2 - titlefnt.texth;
 	else
 		y = (item->h - titlefnt.texth) / 2;
-	drawtext(&titlefnt, draw, &dc.foreground, x, y, item->title);
+	drawtext(&titlefnt, draw, &item->foreground, x, y, item->title);
 
 	/* draw text body */
 	if (item->body) {
@@ -703,8 +706,11 @@ drawitem(struct Item *item)
 			x = MAX(x, xaligned);
 			break;
 		}
-		drawtext(&bodyfnt, draw, &dc.foreground, x, y, item->body);
+		drawtext(&bodyfnt, draw, &item->foreground, x, y, item->body);
 	}
+
+	/* change border color */
+	XSetWindowBorder(dpy, item->win, item->border.pixel);
 
 	XftDrawDestroy(draw);
 }
@@ -718,7 +724,7 @@ resettime(struct Item *item)
 
 /* add item notification item and set its window and contents */
 static void
-additem(const char *title, const char *body, const char *file)
+additem(const char *title, const char *body, const char *file, const char *background, const char *foreground, const char *border)
 {
 	struct Item *item;
 	int titlew, bodyw;
@@ -736,6 +742,14 @@ additem(const char *title, const char *body, const char *file)
 		tail->next = item;
 	item->prev = tail;
 	tail = item;
+
+	/* allocate colors */
+	if (!background || ealloccolor(background, &item->background) == -1)
+		item->background = dc.background;
+	if (!foreground || ealloccolor(foreground, &item->foreground) == -1)
+		item->foreground = dc.foreground;
+	if (!border || ealloccolor(border, &item->border) == -1)
+		item->border = dc.border;
 
 	/* compute notification height */
 	if (item->body)
@@ -792,20 +806,56 @@ delitem(struct Item *item)
 	change = 1;
 }
 
+/* check the type of option given to a notification item */
+static enum ItemOption
+optiontype(const char *s)
+{
+	if (strncmp(s, "IMG:", 4) == 0)
+		return IMG;
+	if (strncmp(s, "BG:", 3) == 0)
+		return BG;
+	if (strncmp(s, "FG:", 3) == 0)
+		return FG;
+	if (strncmp(s, "BRD:", 4) == 0)
+		return BRD;
+	return UNKNOWN;
+}
+
 /* read stdin */
 static void
 parseinput(char *s)
 {
-	char *title, *body, *file;
+	enum ItemOption option;
+	char *title, *body, *file, *fg, *bg, *brd;
 
 	/* get the title */
 	title = strtok(s, "\t\n");
 
 	/* get the filename */
 	file = NULL;
-	if (title != NULL && strncmp(title, "IMG:", 4) == 0) {
-		file = title + 4;
-		title = strtok(NULL, "\t\n");
+	fg = bg = brd = NULL;
+	while (title && (option = optiontype(title)) != UNKNOWN) {
+		switch (option) {
+		case IMG:
+			file = title + 4;
+			title = strtok(NULL, "\t\n");
+			break;
+		case BG:
+			bg = title + 3;
+			title = strtok(NULL, "\t\n");
+			break;
+		case FG:
+			fg = title + 3;
+			title = strtok(NULL, "\t\n");
+			break;
+		case BRD:
+			brd = title + 4;
+			title = strtok(NULL, "\t\n");
+			break;
+		default:
+			break;
+		}
+
 	}
 
 	/* get the body */
@@ -817,7 +867,7 @@ parseinput(char *s)
 	if (!title)
 		return;
 
-	additem(title, body, file);
+	additem(title, body, file, bg, fg, brd);
 }
 
 /* read x events */
