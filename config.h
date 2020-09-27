@@ -16,6 +16,9 @@ static struct Config config = {
 	.gap_pixels = 7,
 	.image_pixels = 80,     /* if 0, the image will fit the notification */
 
+	/* text alignment, set to LeftAlignment, CenterAlignment or RightAlignment */
+	.alignment = LeftAlignment,
+
 	/* set to nonzero to shrink notification width to its content size */
 	.shrink = 0,
 

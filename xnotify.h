@@ -1,4 +1,5 @@
 enum {DownWards, UpWards};
+enum {LeftAlignment, CenterAlignment, RightAlignment};
 enum {
 	NetWMName,
 	NetWMWindowType,
@@ -23,6 +24,7 @@ struct Config {
 	int gap_pixels;
 	int image_pixels;
 
+	int alignment;
 	int shrink;
 
 	int sec;

@@ -90,6 +90,12 @@ getresources(void)
 		config.shrink = (strcasecmp(xval.addr, "true") == 0 ||
 		                strcasecmp(xval.addr, "on") == 0 ||
 		                strcasecmp(xval.addr, "1") == 0);
+	if (XrmGetResource(xdb, "xnotify.alignment", "*", &type, &xval) == True) {
+		if (strcasecmp(xval.addr, "center") == 0)
+			config.alignment = CenterAlignment;
+		else if (strcasecmp(xval.addr, "right") == 0)
+			config.alignment = RightAlignment;
+	}
 }
 
 /* get configuration from commmand-line */
@@ -127,6 +133,18 @@ getoptions(int argc, char *argv[])
 
 	if (argc)
 		usage();
+}
+
+/* check for conflicts in configuration */
+static void
+checkconfig(void)
+{
+	/*
+	 * if the notification shrinks to the text width,
+	 * we don't need to align text
+	 */
+	if (config.shrink)
+		config.alignment = LeftAlignment;
 }
 
 /* get XftColor from color string */
@@ -619,11 +637,13 @@ drawtext(XftDraw *draw, XftColor *color, int x, int y, unsigned h, const char *t
 	return textwidth;
 }
 
+/* draw contents of notification item on item->pixmap */
 static void
 drawitem(struct Item *item)
 {
 	XftDraw *draw;
 	int x, y;
+	int xaligned;
 
 	x = dc.texth;
 	y = dc.texth;
@@ -644,12 +664,41 @@ drawitem(struct Item *item)
 	}
 
 	/* draw text */
-	y = (item->h - dc.texth) / 2;
-	if (item->body){
-		y -= dc.texth;
+	switch (config.alignment) {
+	case LeftAlignment:
+		break;
+	case CenterAlignment:
+		xaligned = drawtext(NULL, NULL, 0, 0, 0, item->title);
+		xaligned = x + (item->w - x - dc.texth - xaligned) / 2;
+		x = MAX(x, xaligned);
+		break;
+	case RightAlignment:
+		xaligned = drawtext(NULL, NULL, 0, 0, 0, item->title);
+		xaligned = x + (item->w - x - dc.texth - xaligned);
+		x = MAX(x, xaligned);
+		break;
 	}
+	y = (item->h - dc.texth) / 2;
+	if (item->body)
+		y -= dc.texth;
 	drawtext(draw, &dc.foreground, x, y, dc.texth, item->title);
+
+	/* draw text body */
 	if (item->body) {
+		switch (config.alignment) {
+		case LeftAlignment:
+			break;
+		case CenterAlignment:
+			xaligned = drawtext(NULL, NULL, 0, 0, 0, item->body);
+			xaligned = x + (item->w - x - dc.texth - xaligned) / 2;
+			x = MAX(x, xaligned);
+			break;
+		case RightAlignment:
+			xaligned = drawtext(NULL, NULL, 0, 0, 0, item->body);
+			xaligned = x + (item->w - x - dc.texth - xaligned);
+			x = MAX(x, xaligned);
+			break;
+		}
 		y += 2 * dc.texth;
 		drawtext(draw, &dc.foreground, x, y, dc.texth, item->body);
 	}
@@ -930,6 +979,7 @@ main(int argc, char *argv[])
 	/* get configuration */
 	getresources();
 	getoptions(argc, argv);
+	checkconfig();
 
 	/* init stuff */
 	initmonitor();
