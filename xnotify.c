@@ -46,9 +46,6 @@ static struct Item *head = NULL;
 static struct Item *tail = NULL;
 static int change = 0;          /* whether the queue of notifications changed */
 
-/* flags */
-static int oflag = 0;           /* whether to terminate after the first notifications timeout is reached */
-
 /* include configuration structure */
 #include "config.h"
 
@@ -116,7 +113,7 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:g:m:os:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:g:m:s:")) != -1) {
 		switch (ch) {
 		case 'G':
 			config.gravityspec = optarg;
@@ -126,9 +123,6 @@ getoptions(int argc, char *argv[])
 			break;
 		case 'm':
 			mon.num = atoi(optarg);
-			break;
-		case 'o':
-			oflag = 1;
 			break;
 		case 's':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
@@ -906,12 +900,11 @@ readevent(void)
 }
 
 /* check whether items have passed the time */
-static int
+static void
 timeitems(void)
 {
 	struct Item *item;
 	struct Item *tmp;
-	int nitem=0;    /* number of items deleted */
 
 	item = head;
 	while (item) {
@@ -919,11 +912,8 @@ timeitems(void)
 		item = item->next;
 		if (time(NULL) - tmp->time > config.sec) {
 			delitem(tmp);
-			nitem++;
 		}
 	}
-
-	return nitem;
 }
 
 static void
@@ -1019,7 +1009,7 @@ main(int argc, char *argv[])
 	struct pollfd pfd[2];   /* [2] for stdin and xfd, see poll(2) */
 	int timeout = -1;       /* maximum interval for poll(2) to complete */
 	int flags;              /* status flags for stdin */
-	int done = 0;           /* increments when a notifications time is up */
+	int done = 0;           /* set to 1 when stdin reaches EOF */
 
 	/* open connection to server and set X variables */
 	if ((dpy = XOpenDisplay(NULL)) == NULL)
@@ -1068,6 +1058,7 @@ main(int argc, char *argv[])
 		if (poll(pfd, 2, timeout) > 0) {
 			if (pfd[0].revents & POLLHUP) {
 				pfd[0].fd = -1;
+				done = 1;
 			}
 			if (pfd[0].revents & POLLIN) {
 				if (fgets(buf, sizeof buf, stdin) == NULL)
@@ -1078,13 +1069,13 @@ main(int argc, char *argv[])
 				readevent();
 			}
 		}
-		done += timeitems();
+		timeitems();
 		if (change)
 			moveitems();
 		timeout = (head) ? 1000 : -1;
 		XFlush(dpy);
 
-		if (oflag && done)
+		if (done && !head)
 			break;
 	}
 
