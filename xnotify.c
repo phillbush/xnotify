@@ -1006,6 +1006,8 @@ cleandc(void)
 	XftColorFree(dpy, visual, colormap, &dc.foreground);
 	XftColorFree(dpy, visual, colormap, &dc.border);
 
+	XFreeColormap(dpy, colormap);
+
 	XFreeGC(dpy, dc.gc);
 }
 
