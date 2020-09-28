@@ -57,15 +57,6 @@ struct Fonts {
 	int texth;          /* text height, also used for padding */
 };
 
-/* geometry structure */
-struct Geometry {
-	int gravity;    /* NorthEastGravity, NorthGravity, etc */
-	int direction;  /* DownWards or UpWards */
-	int x, y;
-	int w, h;
-	int imagesize;
-};
-
 /* notification item structure */
 struct Item {
 	struct Item *prev, *next;
@@ -84,4 +75,19 @@ struct Item {
 	Imlib_Image image;
 	Drawable pixmap;
 	Window win;
+};
+
+/* notification queue structure */
+struct Queue {
+	/* queue pointers */
+	struct Item *head, *tail;
+
+	/* general geometry for the notification queue */
+	int gravity;    /* NorthEastGravity, NorthGravity, etc */
+	int direction;  /* DownWards or UpWards */
+	int x, y;       /* position of the first notification */
+	int w, h;       /* width and height of individual notifications */
+
+	/* whether the queue changed */
+	int change;
 };
