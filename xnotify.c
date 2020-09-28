@@ -35,16 +35,8 @@ static int xfd;
 static struct Monitor mon;
 static Atom utf8string;
 static Atom netatom[NetLast];
-
-/* drawing context */
 static struct DC dc;
 static struct Fonts titlefnt, bodyfnt;
-
-/* notifications */
-static struct Geometry geom;
-static struct Item *head = NULL;
-static struct Item *tail = NULL;
-static int change = 0;          /* whether the queue of notifications changed */
 
 /* include configuration structure */
 #include "config.h"
@@ -330,9 +322,6 @@ initmonitor(void)
 		mon.h = info[selmon].height;
 		XFree(info);
 	}
-
-	if (head)
-		change = 1;
 }
 
 /* init draw context structure */
@@ -350,26 +339,6 @@ initdc(void)
 	/* try to get font */
 	parsefonts(&titlefnt, config.titlefont);
 	parsefonts(&bodyfnt, config.bodyfont);
-}
-
-/* compute geometry of notifications */
-static void
-initgeom(void)
-{
-	parsegravityspec(&geom.gravity, &geom.direction);
-	parsegeometryspec(&geom.x, &geom.y, &geom.w, &geom.h);
-
-	/* update notification size */
-	if (geom.w == 0)
-		geom.w = DEFWIDTH;
-	if (geom.h == 0)
-		geom.h = titlefnt.texth + config.padding_pixels * 2;
-
-	geom.imagesize = (config.image_pixels)
-	               ? config.image_pixels
-	               : geom.h - config.padding_pixels;
-	if (geom.imagesize < 0)
-		geom.imagesize = 0;
 }
 
 /* Intern the used atoms */
@@ -391,13 +360,42 @@ initstructurenotify(void)
 	XSelectInput(dpy, root, StructureNotifyMask);
 }
 
+/* allocate queue and set its members */
+static struct Queue *
+setqueue(void)
+{
+	struct Queue *queue;
+
+	if ((queue = malloc(sizeof *queue)) == NULL)
+		err(1, "malloc");
+
+	queue->head = NULL;
+	queue->tail = NULL;
+	queue->change = 0;
+
+	/* set geometry of notification queue */
+	parsegravityspec(&queue->gravity, &queue->direction);
+	parsegeometryspec(&queue->x, &queue->y, &queue->w, &queue->h);
+	if (queue->w == 0)
+		queue->w = DEFWIDTH;
+	if (queue->h == 0)
+		queue->h = titlefnt.texth + config.padding_pixels * 2;
+
+	if (config.image_pixels <= 0)
+		config.image_pixels = queue->h - config.padding_pixels;
+	if (config.image_pixels < 0)
+		config.image_pixels = 0;
+
+	return queue;
+}
+
 /* get item of given window */
 static struct Item *
-getitem(Window win)
+getitem(struct Queue *queue, Window win)
 {
 	struct Item *item;
 
-	for (item = head; item; item = item->next)
+	for (item = queue->head; item; item = item->next)
 		if (item->win == win)
 			return item;
 	return NULL;
@@ -472,8 +470,8 @@ loadimage(const char *file)
 	imgsize = MIN(width, height);
 
 	image = imlib_create_cropped_scaled_image(0, 0, imgsize, imgsize,
-	                                         geom.imagesize,
-	                                         geom.imagesize);
+	                                         config.image_pixels,
+	                                         config.image_pixels);
 
 	return image;
 }
@@ -663,7 +661,7 @@ drawitem(struct Item *item)
 		imlib_context_set_drawable(item->pixmap);
 		imlib_render_image_on_drawable(x / 2, y / 2);
 		imlib_free_image();
-		x += geom.imagesize;
+		x += config.image_pixels;
 	}
 
 	/* draw text */
@@ -724,7 +722,7 @@ resettime(struct Item *item)
 
 /* add item notification item and set its window and contents */
 static void
-additem(const char *title, const char *body, const char *file, const char *background, const char *foreground, const char *border)
+additem(struct Queue *queue, const char *title, const char *body, const char *file, const char *background, const char *foreground, const char *border)
 {
 	struct Item *item;
 	int titlew, bodyw;
@@ -736,12 +734,12 @@ additem(const char *title, const char *body, const char *file, const char *backg
 	item->title = strdup(title);
 	item->body = (body) ? strdup(body) : NULL;
 	item->image = (file) ? loadimage(file) : NULL;
-	if (!head)
-		head = item;
+	if (!queue->head)
+		queue->head = item;
 	else
-		tail->next = item;
-	item->prev = tail;
-	tail = item;
+		queue->tail->next = item;
+	item->prev = queue->tail;
+	queue->tail = item;
 
 	/* allocate colors */
 	if (!background || ealloccolor(background, &item->background, 0) == -1)
@@ -757,8 +755,8 @@ additem(const char *title, const char *body, const char *file, const char *backg
 	else
 		h = titlefnt.texth + config.padding_pixels;
 	
-	h = config.padding_pixels + ((item->image) ? MAX(h, geom.imagesize) : h);
-	item->h = MAX(h, geom.h);
+	h = config.padding_pixels + ((item->image) ? MAX(h, config.image_pixels) : h);
+	item->h = MAX(h, queue->h);
 
 	/* compute notification width */
 	if (config.shrink) {
@@ -766,13 +764,13 @@ additem(const char *title, const char *body, const char *file, const char *backg
 		bodyw = (item->body) ? drawtext(&bodyfnt, NULL, NULL, 0, 0, item->body) : 0;
 		w = MAX(titlew, bodyw);
 		if (item->image) {
-			w += geom.imagesize + config.padding_pixels * 2;
+			w += config.image_pixels + config.padding_pixels * 2;
 		} else {
 			w += config.padding_pixels * 2;
 		}
-		item->w = MIN(w, geom.w);
+		item->w = MIN(w, queue->w);
 	} else {
-		item->w = geom.w;
+		item->w = queue->w;
 	}
 
 	/* call functions that set the item */
@@ -781,12 +779,12 @@ additem(const char *title, const char *body, const char *file, const char *backg
 	drawitem(item);
 
 	/* a new item was added to the queue, so the queue changed */
-	change = 1;
+	queue->change = 1;
 }
 
 /* delete item */
 static void
-delitem(struct Item *item)
+delitem(struct Queue *queue, struct Item *item)
 {
 	free(item->title);
 	if (item->body)
@@ -797,13 +795,13 @@ delitem(struct Item *item)
 	if (item->prev)
 		item->prev->next = item->next;
 	else
-		head = item->next;
+		queue->head = item->next;
 	if (item->next)
 		item->next->prev = item->prev;
 	else
-		tail = item->prev;
+		queue->tail = item->prev;
 
-	change = 1;
+	queue->change = 1;
 }
 
 /* check the type of option given to a notification item */
@@ -823,7 +821,7 @@ optiontype(const char *s)
 
 /* read stdin */
 static void
-parseinput(char *s)
+parseinput(struct Queue *queue, char *s)
 {
 	enum ItemOption option;
 	char *title, *body, *file, *fg, *bg, *brd;
@@ -867,12 +865,12 @@ parseinput(char *s)
 	if (!title)
 		return;
 
-	additem(title, body, file, bg, fg, brd);
+	additem(queue, title, body, file, bg, fg, brd);
 }
 
 /* read x events */
 static void
-readevent(void)
+readevent(struct Queue *queue)
 {
 	struct Item *item;
 	XEvent ev;
@@ -880,20 +878,22 @@ readevent(void)
 	while (XPending(dpy) && !XNextEvent(dpy, &ev)) {
 		switch (ev.type) {
 		case Expose:
-			if (ev.xexpose.count == 0 && (item = getitem(ev.xexpose.window)) != NULL)
+			if (ev.xexpose.count == 0 && (item = getitem(queue, ev.xexpose.window)) != NULL)
 				copypixmap(item);
 			break;
 		case ButtonPress:
-			if ((item = getitem(ev.xexpose.window)) != NULL)
-				delitem(item);
+			if ((item = getitem(queue, ev.xexpose.window)) != NULL)
+				delitem(queue, item);
 			break;
 		case MotionNotify:
-			if ((item = getitem(ev.xmotion.window)) != NULL)
+			if ((item = getitem(queue, ev.xmotion.window)) != NULL)
 				resettime(item);
 			break;
 		case ConfigureNotify:   /* monitor arrangement changed */
-			if (ev.xproperty.window == root)
+			if (ev.xproperty.window == root) {
 				initmonitor();
+				queue->change = 1;
+			}
 			break;
 		}
 	}
@@ -901,32 +901,32 @@ readevent(void)
 
 /* check whether items have passed the time */
 static void
-timeitems(void)
+timeitems(struct Queue *queue)
 {
 	struct Item *item;
 	struct Item *tmp;
 
-	item = head;
+	item = queue->head;
 	while (item) {
 		tmp = item;
 		item = item->next;
 		if (time(NULL) - tmp->time > config.sec) {
-			delitem(tmp);
+			delitem(queue, tmp);
 		}
 	}
 }
 
 static void
-moveitems(void)
+moveitems(struct Queue *queue)
 {
 	struct Item *item;
 	int x, y;
 	int h = 0;
 
-	for (item = head; item; item = item->next) {
-		x = geom.x + mon.x;
-		y = geom.y + mon.y;
-		switch (geom.gravity) {
+	for (item = queue->head; item; item = item->next) {
+		x = queue->x + mon.x;
+		y = queue->y + mon.y;
+		switch (queue->gravity) {
 		case NorthWestGravity:
 			break;
 		case NorthGravity:
@@ -959,7 +959,7 @@ moveitems(void)
 			break;
 		}
 
-		if (geom.direction == DownWards)
+		if (queue->direction == DownWards)
 			y += h;
 		else
 			y -= h;
@@ -970,21 +970,21 @@ moveitems(void)
 		copypixmap(item);
 	}
 
-	change = 0;
+	queue->change = 0;
 }
 
 /* destroy all notification items */
 static void
-cleanitems(void)
+cleanitems(struct Queue *queue)
 {
 	struct Item *item;
 	struct Item *tmp;
 
-	item = head;
+	item = queue->head;
 	while (item) {
 		tmp = item;
 		item = item->next;
-		delitem(tmp);
+		delitem(queue, tmp);
 	}
 }
 
@@ -1005,8 +1005,9 @@ cleandc(void)
 int
 main(int argc, char *argv[])
 {
-	char buf[BUFSIZ];
+	struct Queue *queue;    /* it contains the queue of notifications and their geometry */
 	struct pollfd pfd[2];   /* [2] for stdin and xfd, see poll(2) */
+	char buf[BUFSIZ];       /* buffer for stdin */
 	int timeout = -1;       /* maximum interval for poll(2) to complete */
 	int flags;              /* status flags for stdin */
 	int done = 0;           /* set to 1 when stdin reaches EOF */
@@ -1038,9 +1039,11 @@ main(int argc, char *argv[])
 	/* init stuff */
 	initmonitor();
 	initdc();
-	initgeom();
 	initatoms();
 	initstructurenotify();
+
+	/* set up queue of notifications */
+	queue = setqueue();
 
 	/* Make stdin nonblocking */
 	if ((flags = fcntl(STDIN_FILENO, F_GETFL)) == -1)
@@ -1063,25 +1066,26 @@ main(int argc, char *argv[])
 			if (pfd[0].revents & POLLIN) {
 				if (fgets(buf, sizeof buf, stdin) == NULL)
 					break;
-				parseinput(buf);
+				parseinput(queue, buf);
 			}
 			if (pfd[1].revents & POLLIN) {
-				readevent();
+				readevent(queue);
 			}
 		}
-		timeitems();
-		if (change)
-			moveitems();
-		timeout = (head) ? 1000 : -1;
+		timeitems(queue);
+		if (queue->change)
+			moveitems(queue);
+		timeout = (queue->head) ? 1000 : -1;
 		XFlush(dpy);
 
-		if (done && !head)
+		if (done && !queue->head)
 			break;
 	}
 
 	/* clean up stuff */
-	cleanitems();
+	cleanitems(queue);
 	cleandc();
+	free(queue);
 
 	/* close connection to server */
 	XrmDestroyDatabase(xdb);
