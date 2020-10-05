@@ -45,7 +45,7 @@ static struct Fonts titlefnt, bodyfnt;
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-g geometry] [-m monitor] [-s seconds]\n");
+	(void)fprintf(stderr, "usage: xnotify [-G gravity] [-g geometry] [-m monitor] [-s seconds]\n");
 	exit(1);
 }
 
@@ -56,6 +56,9 @@ getresources(void)
 	XrmValue xval;
 	unsigned long n;
 	char *type;
+
+	if (xrm == NULL || xdb == NULL)
+		return;
 
 	if (XrmGetResource(xdb, "xnotify.title.font", "*", &type, &xval) == True)
 		config.titlefont = xval.addr;
