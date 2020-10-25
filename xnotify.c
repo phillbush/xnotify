@@ -38,6 +38,9 @@ static Atom netatom[NetLast];
 static struct DC dc;
 static struct Fonts titlefnt, bodyfnt;
 
+/* flags */
+static int oflag = 0;   /* whether only one notification must exist at a time */
+
 /* include configuration structure */
 #include "config.h"
 
@@ -45,7 +48,7 @@ static struct Fonts titlefnt, bodyfnt;
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-G gravity] [-g geometry] [-m monitor] [-s seconds]\n");
+	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-g geometry] [-m monitor] [-s seconds]\n");
 	exit(1);
 }
 
@@ -108,7 +111,7 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:g:m:s:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:g:m:os:")) != -1) {
 		switch (ch) {
 		case 'G':
 			config.gravityspec = optarg;
@@ -118,6 +121,9 @@ getoptions(int argc, char *argv[])
 			break;
 		case 'm':
 			mon.num = atoi(optarg);
+			break;
+		case 'o':
+			oflag = 1;
 			break;
 		case 's':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
@@ -794,7 +800,6 @@ delitem(struct Queue *queue, struct Item *item)
 		free(item->body);
 	XFreePixmap(dpy, item->pixmap);
 	XDestroyWindow(dpy, item->win);
-
 	if (item->prev)
 		item->prev->next = item->next;
 	else
@@ -803,7 +808,7 @@ delitem(struct Queue *queue, struct Item *item)
 		item->next->prev = item->prev;
 	else
 		queue->tail = item->prev;
-
+	free(item);
 	queue->change = 1;
 }
 
@@ -820,6 +825,21 @@ optiontype(const char *s)
 	if (strncmp(s, "BRD:", 4) == 0)
 		return BRD;
 	return UNKNOWN;
+}
+
+/* destroy all notification items */
+static void
+cleanitems(struct Queue *queue)
+{
+	struct Item *item;
+	struct Item *tmp;
+
+	item = queue->head;
+	while (item) {
+		tmp = item;
+		item = item->next;
+		delitem(queue, tmp);
+	}
 }
 
 /* read stdin */
@@ -856,7 +876,6 @@ parseinput(struct Queue *queue, char *s)
 		default:
 			break;
 		}
-
 	}
 
 	/* get the body */
@@ -867,6 +886,9 @@ parseinput(struct Queue *queue, char *s)
 
 	if (!title)
 		return;
+
+	if (oflag)
+		cleanitems(queue);
 
 	additem(queue, title, body, file, bg, fg, brd);
 }
@@ -974,21 +996,6 @@ moveitems(struct Queue *queue)
 	}
 
 	queue->change = 0;
-}
-
-/* destroy all notification items */
-static void
-cleanitems(struct Queue *queue)
-{
-	struct Item *item;
-	struct Item *tmp;
-
-	item = queue->head;
-	while (item) {
-		tmp = item;
-		item = item->next;
-		delitem(queue, tmp);
-	}
 }
 
 /* clean up dc elements */
