@@ -1,4 +1,4 @@
-enum ItemOption {IMG, BG, FG, BRD, UNKNOWN};
+enum ItemOption {IMG, BG, FG, BRD, TAG, CMD, UNKNOWN};
 enum {DownWards, UpWards};
 enum {LeftAlignment, CenterAlignment, RightAlignment};
 enum {
@@ -32,6 +32,8 @@ struct Config {
 	int shrink;
 
 	int sec;
+
+	unsigned int actionbutton;
 };
 
 /* monitor geometry structure */
@@ -57,12 +59,26 @@ struct Fonts {
 	int texth;          /* text height, also used for padding */
 };
 
+/* notification item specification structure */
+struct Itemspec {
+	char *title;
+	char *body;
+	char *file;
+	char *background;
+	char *foreground;
+	char *border;
+	char *tag;
+	char *cmd;
+};
+
 /* notification item structure */
 struct Item {
 	struct Item *prev, *next;
 
 	char *title;
 	char *body;
+	char *tag;
+	char *cmd;
 
 	time_t time;
 

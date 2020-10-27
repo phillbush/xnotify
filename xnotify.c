@@ -48,7 +48,7 @@ static int oflag = 0;   /* whether only one notification must exist at a time */
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-g geometry] [-m monitor] [-s seconds]\n");
+	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-b button] [-g geometry] [-m monitor] [-s seconds]\n");
 	exit(1);
 }
 
@@ -111,10 +111,33 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:g:m:os:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:b:g:m:os:")) != -1) {
 		switch (ch) {
 		case 'G':
 			config.gravityspec = optarg;
+			break;
+		case 'b':
+			if (*(optarg+1) != '\0')
+				break;
+			switch (*optarg) {
+			case '1':
+				config.actionbutton = Button1;
+				break;
+			case '2':
+				config.actionbutton = Button2;
+				break;
+			case '3':
+				config.actionbutton = Button3;
+				break;
+			case '4':
+				config.actionbutton = Button4;
+				break;
+			case '5':
+				config.actionbutton = Button5;
+				break;
+			default:
+				break;
+			}
 			break;
 		case 'g':
 			config.geometryspec = optarg;
@@ -731,7 +754,7 @@ resettime(struct Item *item)
 
 /* add item notification item and set its window and contents */
 static void
-additem(struct Queue *queue, const char *title, const char *body, const char *file, const char *background, const char *foreground, const char *border)
+additem(struct Queue *queue, struct Itemspec *itemspec)
 {
 	struct Item *item;
 	int titlew, bodyw;
@@ -740,9 +763,11 @@ additem(struct Queue *queue, const char *title, const char *body, const char *fi
 	if ((item = malloc(sizeof *item)) == NULL)
 		err(1, "malloc");
 	item->next = NULL;
-	item->title = strdup(title);
-	item->body = (body) ? strdup(body) : NULL;
-	item->image = (file) ? loadimage(file) : NULL;
+	item->title = strdup(itemspec->title);
+	item->body = (itemspec->body) ? strdup(itemspec->body) : NULL;
+	item->image = (itemspec->file) ? loadimage(itemspec->file) : NULL;
+	item->tag = (itemspec->tag) ? strdup(itemspec->tag) : NULL;
+	item->cmd = (itemspec->cmd) ? strdup(itemspec->cmd) : NULL;
 	if (!queue->head)
 		queue->head = item;
 	else
@@ -751,11 +776,11 @@ additem(struct Queue *queue, const char *title, const char *body, const char *fi
 	queue->tail = item;
 
 	/* allocate colors */
-	if (!background || ealloccolor(background, &item->background, 0) == -1)
+	if (!itemspec->background || ealloccolor(itemspec->background, &item->background, 0) == -1)
 		item->background = dc.background;
-	if (!foreground || ealloccolor(foreground, &item->foreground, 0) == -1)
+	if (!itemspec->foreground || ealloccolor(itemspec->foreground, &item->foreground, 0) == -1)
 		item->foreground = dc.foreground;
-	if (!border || ealloccolor(border, &item->border, 0) == -1)
+	if (!itemspec->border || ealloccolor(itemspec->border, &item->border, 0) == -1)
 		item->border = dc.border;
 
 	/* compute notification height */
@@ -824,73 +849,72 @@ optiontype(const char *s)
 		return FG;
 	if (strncmp(s, "BRD:", 4) == 0)
 		return BRD;
+	if (strncmp(s, "TAG:", 4) == 0)
+		return TAG;
+	if (strncmp(s, "CMD:", 4) == 0)
+		return CMD;
 	return UNKNOWN;
 }
 
-/* destroy all notification items */
-static void
-cleanitems(struct Queue *queue)
-{
-	struct Item *item;
-	struct Item *tmp;
-
-	item = queue->head;
-	while (item) {
-		tmp = item;
-		item = item->next;
-		delitem(queue, tmp);
-	}
-}
-
-/* read stdin */
-static void
-parseinput(struct Queue *queue, char *s)
+/* parse notification line */
+static struct Itemspec *
+parseline(char *s)
 {
 	enum ItemOption option;
-	char *title, *body, *file, *fg, *bg, *brd;
+	struct Itemspec *itemspec;
+
+	if ((itemspec = malloc(sizeof *itemspec)) == NULL)
+		err(1, "malloc");
 
 	/* get the title */
-	title = strtok(s, "\t\n");
+	itemspec->title = strtok(s, "\t\n");
 
 	/* get the filename */
-	file = NULL;
-	fg = bg = brd = NULL;
-	while (title && (option = optiontype(title)) != UNKNOWN) {
+	itemspec->file = NULL;
+	itemspec->foreground = NULL;
+	itemspec->background = NULL;
+	itemspec->border = NULL;
+	itemspec->tag = NULL;
+	itemspec->cmd = NULL;
+	while (itemspec->title && (option = optiontype(itemspec->title)) != UNKNOWN) {
 		switch (option) {
 		case IMG:
-			file = title + 4;
-			title = strtok(NULL, "\t\n");
+			itemspec->file = itemspec->title + 4;
+			itemspec->title = strtok(NULL, "\t\n");
 			break;
 		case BG:
-			bg = title + 3;
-			title = strtok(NULL, "\t\n");
+			itemspec->background = itemspec->title + 3;
+			itemspec->title = strtok(NULL, "\t\n");
 			break;
 		case FG:
-			fg = title + 3;
-			title = strtok(NULL, "\t\n");
+			itemspec->foreground = itemspec->title + 3;
+			itemspec->title = strtok(NULL, "\t\n");
 			break;
 		case BRD:
-			brd = title + 4;
-			title = strtok(NULL, "\t\n");
+			itemspec->border = itemspec->title + 4;
+			itemspec->title = strtok(NULL, "\t\n");
 			break;
+		case TAG:
+			itemspec->tag = itemspec->title + 4;
+			itemspec->title = strtok(NULL, "\t\n");
+		case CMD:
+			itemspec->cmd = itemspec->title + 4;
+			itemspec->title = strtok(NULL, "\t\n");
 		default:
 			break;
 		}
 	}
 
 	/* get the body */
-	body = strtok(NULL, "\n");
-	if (body)
-		while (*body == '\t')
-			body++;
+	itemspec->body = strtok(NULL, "\n");
+	if (itemspec->body)
+		while (*itemspec->body == '\t')
+			itemspec->body++;
 
-	if (!title)
-		return;
+	if (!itemspec->title)
+		return NULL;
 
-	if (oflag)
-		cleanitems(queue);
-
-	additem(queue, title, body, file, bg, fg, brd);
+	return itemspec;
 }
 
 /* read x events */
@@ -907,8 +931,11 @@ readevent(struct Queue *queue)
 				copypixmap(item);
 			break;
 		case ButtonPress:
-			if ((item = getitem(queue, ev.xexpose.window)) != NULL)
-				delitem(queue, item);
+			if ((item = getitem(queue, ev.xbutton.window)) == NULL)
+				break;
+			if ((ev.xbutton.button == config.actionbutton) && item->cmd)
+				printf("%s\n", item->cmd);
+			delitem(queue, item);
 			break;
 		case MotionNotify:
 			if ((item = getitem(queue, ev.xmotion.window)) != NULL)
@@ -998,6 +1025,23 @@ moveitems(struct Queue *queue)
 	queue->change = 0;
 }
 
+/* destroy all notification items of the given tag, or all items if tag is NULL */
+static void
+cleanitems(struct Queue *queue, const char *tag)
+{
+	struct Item *item;
+	struct Item *tmp;
+
+	item = queue->head;
+	while (item) {
+		tmp = item;
+		item = item->next;
+		if (tag == NULL || (tmp->tag && strcmp(tmp->tag, tag) == 0)) {
+			delitem(queue, tmp);
+		}
+	}
+}
+
 /* clean up dc elements */
 static void
 cleandc(void)
@@ -1015,6 +1059,7 @@ cleandc(void)
 int
 main(int argc, char *argv[])
 {
+	struct Itemspec *itemspec;
 	struct Queue *queue;    /* it contains the queue of notifications and their geometry */
 	struct pollfd pfd[2];   /* [2] for stdin and xfd, see poll(2) */
 	char buf[BUFSIZ];       /* buffer for stdin */
@@ -1076,7 +1121,14 @@ main(int argc, char *argv[])
 			if (pfd[0].revents & POLLIN) {
 				if (fgets(buf, sizeof buf, stdin) == NULL)
 					break;
-				parseinput(queue, buf);
+				if ((itemspec = parseline(buf)) != NULL) {
+					if (oflag) {
+						cleanitems(queue, NULL);
+					} else if (itemspec->tag) {
+						cleanitems(queue, itemspec->tag);
+					}
+					additem(queue, itemspec);
+				}
 			}
 			if (pfd[1].revents & POLLIN) {
 				readevent(queue);
@@ -1093,7 +1145,7 @@ main(int argc, char *argv[])
 	}
 
 	/* clean up stuff */
-	cleanitems(queue);
+	cleanitems(queue, NULL);
 	cleandc();
 	free(queue);
 

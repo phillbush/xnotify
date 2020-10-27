@@ -6,6 +6,8 @@ xnotify \- popup a notification on the screen
 .RB [ \-o ]
 .RB [ \-G
 .IR gravity ]
+.RB [ \-b
+.IR button ]
 .RB [ \-g
 .IR geometry ]
 .RB [ \-m
@@ -30,6 +32,14 @@ can be "NE" for NorthEastGravity (display on the top right corner of the screen)
 "SE" for SouthEastGravity (display on the bottom right corner of the screen);
 "C" for CenterGravity (display on the center of the screen);
 etc.
+.TP
+.BI "\-b " button
+Specifies a number between 1 and 5 to be the mouse action button.
+When clicking over a notification with the action button,
+the notification will close,
+and xnotify will output to its stdout the value of the notification's
+.B CMD:
+option.
 .TP
 .BI "\-g " geometry
 Specifies the geometry in the form
@@ -94,6 +104,14 @@ The following names are currently accepted for the NAME:VALUE pairs:
 .TP
 .B IMG:
 Specify the path of a image to be displayed on the notification.
+.TP
+.B TAG:
+Specify a string to be the notification's tag.
+When a notification with a given tag spawns,
+all other notifications with the same tag disappears.
+.TP
+.B CMD:
+Specify a string to be output when clicking on the notification with the action mouse button.
 .TP
 .B BG:
 Specify the color of the notification background.
