@@ -897,9 +897,11 @@ parseline(char *s)
 		case TAG:
 			itemspec->tag = itemspec->title + 4;
 			itemspec->title = strtok(NULL, "\t\n");
+			break;
 		case CMD:
 			itemspec->cmd = itemspec->title + 4;
 			itemspec->title = strtok(NULL, "\t\n");
+			break;
 		default:
 			break;
 		}
