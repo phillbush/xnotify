@@ -99,6 +99,8 @@ getresources(void)
 	if (XrmGetResource(xdb, "xnotify.alignment", "*", &type, &xval) == True) {
 		if (strcasecmp(xval.addr, "center") == 0)
 			config.alignment = CenterAlignment;
+		else if (strcasecmp(xval.addr, "left") == 0)
+			config.alignment = LeftAlignment;
 		else if (strcasecmp(xval.addr, "right") == 0)
 			config.alignment = RightAlignment;
 	}
