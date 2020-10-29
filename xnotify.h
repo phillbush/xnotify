@@ -83,6 +83,7 @@ struct Item {
 	time_t time;
 
 	int w, h;
+	int imgw, imgh;
 
 	XftColor background;
 	XftColor foreground;

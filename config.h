@@ -20,7 +20,7 @@ static struct Config config = {
 	.padding_pixels = 10,   /* space around content */
 
 	/* text alignment, set to LeftAlignment, CenterAlignment or RightAlignment */
-	.alignment = RightAlignment,
+	.alignment = LeftAlignment,
 
 	/* set to nonzero to shrink notification width to its content size */
 	.shrink = 0,

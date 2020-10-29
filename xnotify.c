@@ -444,14 +444,12 @@ copypixmap(struct Item *item)
 
 /* load and scale image */
 static Imlib_Image
-loadimage(const char *file)
+loadimage(const char *file, int *width_ret, int *height_ret)
 {
 	Imlib_Image image;
 	Imlib_Load_Error errcode;
 	const char *errstr;
-	int width;
-	int height;
-	int imgsize;
+	int width, height;
 
 	image = imlib_load_image_with_error_return(file, &errcode);
 	if (*file == '\0') {
@@ -501,11 +499,16 @@ loadimage(const char *file)
 
 	width = imlib_image_get_width();
 	height = imlib_image_get_height();
-	imgsize = MIN(width, height);
 
-	image = imlib_create_cropped_scaled_image(0, 0, imgsize, imgsize,
-	                                         config.image_pixels,
-	                                         config.image_pixels);
+	if (width == MAX(width, height)) {
+		*width_ret = config.image_pixels;
+		*height_ret = (height * config.image_pixels) / width;
+	} else {
+		*width_ret = (width * config.image_pixels) / height;
+		*height_ret = config.image_pixels;
+	}
+
+	image = imlib_create_cropped_scaled_image(0, 0, width, height, *width_ret, *height_ret);
 
 	return image;
 }
@@ -693,7 +696,8 @@ drawitem(struct Item *item)
 	if (item->image) {
 		imlib_context_set_image(item->image);
 		imlib_context_set_drawable(item->pixmap);
-		imlib_render_image_on_drawable(x / 2, y / 2);
+		imlib_render_image_on_drawable((x + config.image_pixels - item->imgw) / 2,
+		                                (y + config.image_pixels - item->imgh) / 2);
 		imlib_free_image();
 		x += config.image_pixels;
 	}
@@ -767,7 +771,7 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	item->next = NULL;
 	item->title = strdup(itemspec->title);
 	item->body = (itemspec->body) ? strdup(itemspec->body) : NULL;
-	item->image = (itemspec->file) ? loadimage(itemspec->file) : NULL;
+	item->image = (itemspec->file) ? loadimage(itemspec->file, &item->imgw, &item->imgh) : NULL;
 	item->tag = (itemspec->tag) ? strdup(itemspec->tag) : NULL;
 	item->cmd = (itemspec->cmd) ? strdup(itemspec->cmd) : NULL;
 	if (!queue->head)
