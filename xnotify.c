@@ -500,7 +500,7 @@ loadimage(const char *file, int *width_ret, int *height_ret)
 	width = imlib_image_get_width();
 	height = imlib_image_get_height();
 
-	if (width == MAX(width, height)) {
+	if (width > height) {
 		*width_ret = config.image_pixels;
 		*height_ret = (height * config.image_pixels) / width;
 	} else {
