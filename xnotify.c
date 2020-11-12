@@ -166,16 +166,12 @@ getoptions(int argc, char *argv[])
 		usage();
 }
 
-/*
- * get XftColor *color from color string s
- * if the variable error is nonzero, exit on error
- * if the variable error is zero, return -1 on error
- */
+/* get XftColor *color from color string s */
 static int
-ealloccolor(const char *s, XftColor *color, int error)
+ealloccolor(const char *s, XftColor *color, int exitonerror)
 {
 	if (!XftColorAllocName(dpy, visual, colormap, s, color)) {
-		if (error)
+		if (exitonerror)
 			errx(1, "could not allocate color: %s", s);
 		warnx("could not allocate color: %s", s);
 		return -1;
@@ -1088,16 +1084,16 @@ main(int argc, char *argv[])
 	if ((xrm = XResourceManagerString(dpy)) != NULL)
 		xdb = XrmGetStringDatabase(xrm);
 
+	/* get configuration */
+	getresources();
+	getoptions(argc, argv);
+
 	/* imlib2 stuff */
 	imlib_set_cache_size(2048 * 1024);
 	imlib_context_set_dither(1);
 	imlib_context_set_display(dpy);
 	imlib_context_set_visual(visual);
 	imlib_context_set_colormap(colormap);
-
-	/* get configuration */
-	getresources();
-	getoptions(argc, argv);
 
 	/* init stuff */
 	initmonitor();
