@@ -194,6 +194,40 @@ or
 .BR "\(dqright\(dq" ,
 text is aligned to the left, center, or right of the popup window, respectively.
 By default, notification text is aligned to the left of the notification popup window.
+.SH SIGNALS
+.B xnotify
+respond to signals sent to it.
+.TP
+.B SIGUSR1
+Close all notifications.
+.TP
+.B SIGUSR2
+Print the CMD of the first notification and then close all notifications.
+.TP
+.B SIGSTOP
+Stop
+.BR xnotify .
+When this signal is sent,
+all new notifications are accumuled until
+.B xnotify
+receive a
+.B SIGCONT
+signal.
+This signal is useful to be sent when a window is fullscreen,
+so xnotify will not annoy with notifications on top of the fullscreen window.
+A
+.B SIGUSR1
+signal must be sent before a
+.B SIGSTOP
+in order to
+close all notifications before stop.
+.TP
+.B SIGCONT
+Display all accumulated notifications and continue
+.B xnotify
+after being stop
+with
+.BR SIGSTOP .
 .SH EXAMPLES
 The following is an example of how to run XNotify.
 .IP

@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -40,6 +41,7 @@ static struct Fonts titlefnt, bodyfnt;
 
 /* flags */
 static int oflag = 0;   /* whether only one notification must exist at a time */
+volatile sig_atomic_t usrflag;  /* 1 if for SIGUSR1, 2 for SIGUSR2, 0 otherwise */
 
 /* include configuration structure */
 #include "config.h"
@@ -330,6 +332,41 @@ parsefonts(struct Fonts *fnt, const char *s)
 			errx(1, "cannot load font");
 	}
 	fnt->texth = fnt->fonts[0]->height;
+}
+
+/* signal SIGUSR1 handler (close all notifications) */
+static void
+sigusr1handler(int sig)
+{
+	(void)sig;
+	usrflag = 1;
+}
+
+/* signal SIGUSR2 handler (print cmd of first notification) */
+static void
+sigusr2handler(int sig)
+{
+	(void)sig;
+	usrflag = 2;
+}
+
+/* init signal  */
+static void
+initsignal(void)
+{
+	struct sigaction sa;
+
+	sa.sa_handler = sigusr1handler;
+	sa.sa_flags = 0;
+	sigemptyset(&sa.sa_mask);
+	if (sigaction(SIGUSR1, &sa, NULL) == -1)
+		err(1, "sigaction");
+
+	sa.sa_handler = sigusr2handler;
+	sa.sa_flags = 0;
+	sigemptyset(&sa.sa_mask);
+	if (sigaction(SIGUSR2, &sa, NULL) == -1)
+		err(1, "sigaction");
 }
 
 /* query monitor information */
@@ -839,6 +876,13 @@ delitem(struct Queue *queue, struct Item *item)
 	queue->change = 1;
 }
 
+/* print item's command to stdout */
+static void
+cmditem(struct Item *item)
+{
+	printf("%s\n", item->cmd);
+}
+
 /* check the type of option given to a notification item */
 static enum ItemOption
 optiontype(const char *s)
@@ -938,7 +982,7 @@ readevent(struct Queue *queue)
 			if ((item = getitem(queue, ev.xbutton.window)) == NULL)
 				break;
 			if ((ev.xbutton.button == config.actionbutton) && item->cmd)
-				printf("%s\n", item->cmd);
+				cmditem(item);
 			delitem(queue, item);
 			break;
 		case MotionNotify:
@@ -972,6 +1016,7 @@ timeitems(struct Queue *queue)
 	}
 }
 
+/* a notification was deleted or added, reorder the queue of notifications */
 static void
 moveitems(struct Queue *queue)
 {
@@ -1096,6 +1141,7 @@ main(int argc, char *argv[])
 	imlib_context_set_colormap(colormap);
 
 	/* init stuff */
+	initsignal();
 	initmonitor();
 	initdc();
 	initatoms();
@@ -1137,6 +1183,12 @@ main(int argc, char *argv[])
 			if (pfd[1].revents & POLLIN) {
 				readevent(queue);
 			}
+		}
+		if (usrflag) {
+			if (usrflag > 1 && queue->head)
+				cmditem(queue->head);
+			cleanitems(queue, NULL);
+			usrflag = 0;
 		}
 		timeitems(queue);
 		if (queue->change)
