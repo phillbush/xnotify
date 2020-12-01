@@ -190,6 +190,7 @@ getnum(const char **s, int *n)
 	char *endp;
 
 	num = strtol(*s, &endp, 10);
+	errno = 0;
 	retval = (errno == ERANGE || num > INT_MAX || num < 0 || endp == *s);
 	*s = endp;
 	*n = num;
@@ -807,6 +808,7 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	item->image = (itemspec->file) ? loadimage(itemspec->file, &item->imgw, &item->imgh) : NULL;
 	item->tag = (itemspec->tag) ? strdup(itemspec->tag) : NULL;
 	item->cmd = (itemspec->cmd) ? strdup(itemspec->cmd) : NULL;
+	item->sec = itemspec->sec;
 	if (!queue->head)
 		queue->head = item;
 	else
@@ -899,6 +901,8 @@ optiontype(const char *s)
 		return TAG;
 	if (strncmp(s, "CMD:", 4) == 0)
 		return CMD;
+	if (strncmp(s, "SEC:", 4) == 0)
+		return SEC;
 	return UNKNOWN;
 }
 
@@ -908,6 +912,8 @@ parseline(char *s)
 {
 	enum ItemOption option;
 	struct Itemspec *itemspec;
+	const char *t;
+	int n;
 
 	if ((itemspec = malloc(sizeof *itemspec)) == NULL)
 		err(1, "malloc");
@@ -922,6 +928,7 @@ parseline(char *s)
 	itemspec->border = NULL;
 	itemspec->tag = NULL;
 	itemspec->cmd = NULL;
+	itemspec->sec = config.sec;
 	while (itemspec->title && (option = optiontype(itemspec->title)) != UNKNOWN) {
 		switch (option) {
 		case IMG:
@@ -946,6 +953,12 @@ parseline(char *s)
 			break;
 		case CMD:
 			itemspec->cmd = itemspec->title + 4;
+			itemspec->title = strtok(NULL, "\t\n");
+			break;
+		case SEC:
+			t = itemspec->title + 4;
+			if (!getnum(&t, &n))
+				itemspec->sec = n;
 			itemspec->title = strtok(NULL, "\t\n");
 			break;
 		default:
@@ -1010,7 +1023,7 @@ timeitems(struct Queue *queue)
 	while (item) {
 		tmp = item;
 		item = item->next;
-		if (time(NULL) - tmp->time > config.sec) {
+		if (tmp->sec && time(NULL) - tmp->time > tmp->sec) {
 			delitem(queue, tmp);
 		}
 	}
