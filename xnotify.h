@@ -1,4 +1,4 @@
-enum ItemOption {IMG, BG, FG, BRD, TAG, CMD, UNKNOWN};
+enum ItemOption {IMG, BG, FG, BRD, TAG, CMD, SEC, UNKNOWN};
 enum {DownWards, UpWards};
 enum {LeftAlignment, CenterAlignment, RightAlignment};
 enum {
@@ -69,6 +69,7 @@ struct Itemspec {
 	char *border;
 	char *tag;
 	char *cmd;
+	int sec;
 };
 
 /* notification item structure */
@@ -81,6 +82,7 @@ struct Item {
 	char *cmd;
 
 	time_t time;
+	int sec;
 
 	int w, h;
 	int imgw, imgh;
