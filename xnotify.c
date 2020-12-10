@@ -17,12 +17,6 @@
 #include <Imlib2.h>
 #include "xnotify.h"
 
-/* macros */
-#define DEFWIDTH            350     /* default width of a notification */
-#define MIN(x,y)            ((x)<(y)?(x):(y))
-#define MAX(x,y)            ((x)>(y)?(x):(y))
-#define BETWEEN(x, a, b)    ((a) <= (x) && (x) <= (b))
-
 /* X stuff */
 static Display *dpy;
 static Colormap colormap;
@@ -446,12 +440,8 @@ setqueue(void)
 	parsegeometryspec(&queue->x, &queue->y, &queue->w, &queue->h);
 	if (queue->w == 0)
 		queue->w = DEFWIDTH;
-	if (queue->h == 0)
-		queue->h = titlefnt.texth + config.padding_pixels * 2;
 
 	if (config.image_pixels <= 0)
-		config.image_pixels = queue->h - config.padding_pixels;
-	if (config.image_pixels < 0)
 		config.image_pixels = 0;
 
 	return queue;
@@ -560,8 +550,11 @@ createwindow(struct Item *item)
 	swa.save_under = True;  /* pop-up windows should save_under */
 	swa.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask;
 
-	/* windows are created at 0,0 position for they'll be moved later */
-	item->win = XCreateWindow(dpy, root, 0, 0, item->w, item->h, config.border_pixels,
+	/*
+	 * windows are created at 0,0 position for they'll be moved later
+	 * windows are created with 1pix height for they'll be resized later
+	 */
+	item->win = XCreateWindow(dpy, root, 0, 0, item->w, 1, config.border_pixels,
 	                          CopyFromParent, CopyFromParent, CopyFromParent,
 	                          CWOverrideRedirect | CWBackPixel | CWBorderPixel |
 	                          CWSaveUnder | CWEventMask, &swa);
@@ -675,37 +668,42 @@ getfontucode(struct Fonts *fnt, FcChar32 ucode)
 	return fnt->fonts[0];
 }
 
-/* draw text into draw (if draw != NULL); return width of text glyphs */
+/* return width of text glyphs; draw text into draw if draw != NULL */
 static int
-drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, const char *text)
+drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w, const char **s)
 {
+	XftFont *currfont;
+	XGlyphInfo ext;
+	FcChar32 ucode;
+	const char *orig, *text, *next;
+	size_t len;
 	int textwidth = 0;
+	int texty;
 
+	orig = text = *s;
 	while (*text) {
-		XftFont *currfont;
-		XGlyphInfo ext;
-		FcChar32 ucode;
-		const char *next;
-		size_t len;
-
 		ucode = getnextutf8char(text, &next);
 		currfont = getfontucode(fnt, ucode);
-
 		len = next - text;
 		XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)text, len, &ext);
 		textwidth += ext.xOff;
-
+		if (w && textwidth > w) {
+			if (text == orig)
+				return 0;
+			if (config.wrap == MidWord) {
+				if (draw)
+					*s = text;
+				break;
+			}
+		}
 		if (draw) {
-			int texty;
-
 			texty = y + (fnt->texth - (currfont->ascent + currfont->descent))/2 + currfont->ascent;
 			XftDrawStringUtf8(draw, color, currfont, x, texty, (XftChar8 *)text, len);
 			x += ext.xOff;
+			*s = next;
 		}
-
 		text = next;
 	}
-
 	return textwidth;
 }
 
@@ -713,75 +711,81 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, const 
 static void
 drawitem(struct Item *item)
 {
+	Drawable textpixmap, imagepixmap;
+	struct Fonts *fnt;
+	const char *text;
 	XftDraw *draw;
-	int x, y;
-	int xaligned, oldx;
+	int xaligned;
+	int i, x;
+	int texth, imageh;
 
-	x = config.padding_pixels;
-	y = config.padding_pixels;
-	item->pixmap = XCreatePixmap(dpy, item->win, item->w, item->h, depth);
-	draw = XftDrawCreate(dpy, item->pixmap, visual, colormap);
-
-	/* draw background */
+	item->pixmap = XCreatePixmap(dpy, item->win, item->w, config.max_height, depth);
 	XSetForeground(dpy, dc.gc, item->background.pixel);
-	XFillRectangle(dpy, item->pixmap, dc.gc, 0, 0, item->w, item->h);
+	XFillRectangle(dpy, item->pixmap, dc.gc, 0, 0, item->w, config.max_height);
 
 	/* draw image */
+	imageh = 0;
 	if (item->image) {
+		imagepixmap = XCreatePixmap(dpy, item->pixmap, config.image_pixels, config.image_pixels, depth);
+		XFillRectangle(dpy, imagepixmap, dc.gc, 0, 0, config.image_pixels, config.image_pixels);
 		imlib_context_set_image(item->image);
-		imlib_context_set_drawable(item->pixmap);
-		imlib_render_image_on_drawable((x + config.image_pixels - item->imgw) / 2,
-		                                (y + config.image_pixels - item->imgh) / 2);
+		imlib_context_set_drawable(imagepixmap);
+		imlib_render_image_on_drawable((config.image_pixels - item->imgw) / 2,
+		                               (config.image_pixels - item->imgh) / 2);
 		imlib_free_image();
-		x += config.image_pixels;
+		imageh = config.image_pixels;
 	}
 
 	/* draw text */
-	oldx = x;
-	switch (config.alignment) {
-	case LeftAlignment:
-		break;
-	case CenterAlignment:
-		xaligned = drawtext(&titlefnt, NULL, NULL, 0, 0, item->title);
-		xaligned = x + (item->w - x - titlefnt.texth - xaligned) / 2;
-		x = MAX(x, xaligned);
-		break;
-	case RightAlignment:
-		xaligned = drawtext(&titlefnt, NULL, NULL, 0, 0, item->title);
-		xaligned = x + (item->w - x - titlefnt.texth - xaligned);
-		x = MAX(x, xaligned);
-		break;
-	}
-	if (item->body)
-		y = (item->h - config.leading_pixels) / 2 - titlefnt.texth;
-	else
-		y = (item->h - titlefnt.texth) / 2;
-	drawtext(&titlefnt, draw, &item->foreground, x, y, item->title);
-
-	/* draw text body */
-	if (item->body) {
-		y += titlefnt.texth + config.leading_pixels;
-		x = oldx;
-		switch (config.alignment) {
-		case LeftAlignment:
-			break;
-		case CenterAlignment:
-			xaligned = drawtext(&bodyfnt, NULL, NULL, 0, 0, item->body);
-			xaligned = x + (item->w - x - bodyfnt.texth - xaligned) / 2;
-			x = MAX(x, xaligned);
-			break;
-		case RightAlignment:
-			xaligned = drawtext(&bodyfnt, NULL, NULL, 0, 0, item->body);
-			xaligned = x + (item->w - x - bodyfnt.texth - xaligned);
-			x = MAX(x, xaligned);
-			break;
+	texth = 0;
+	textpixmap = XCreatePixmap(dpy, item->pixmap, item->textw, config.max_height, depth);
+	XFillRectangle(dpy, textpixmap, dc.gc, 0, 0, item->textw, config.max_height);
+	draw = XftDrawCreate(dpy, textpixmap, visual, colormap);
+	for (i = 0; i < item->nlines; i++) {
+		fnt = (i == 0 && item->nlines > 1) ? &titlefnt : &bodyfnt;
+		text = item->line[i];
+		while (texth <= config.max_height &&
+		      (xaligned = drawtext(fnt, NULL, NULL, 0, 0, item->textw, &text)) > 0) {
+			switch (config.alignment) {
+			case LeftAlignment:
+				x = 0;
+				break;
+			case CenterAlignment:
+				xaligned = (item->textw - xaligned) / 2;
+				x = MAX(0, xaligned);
+				break;
+			case RightAlignment:
+				xaligned = item->textw - xaligned;
+				x = MAX(0, xaligned);
+				break;
+			default:
+				break;
+			}
+			drawtext(fnt, draw, &item->foreground, x, texth, item->textw, &text);
+			texth += fnt->texth + config.leading_pixels;
 		}
-		drawtext(&bodyfnt, draw, &item->foreground, x, y, item->body);
 	}
+	texth -= config.leading_pixels;
+
+	/* resize notification window based on its contents */
+	item->h = MAX(imageh, texth) + 2 * config.padding_pixels;
+	XResizeWindow(dpy, item->win, item->w, item->h);
 
 	/* change border color */
 	XSetWindowBorder(dpy, item->win, item->border.pixel);
 
+	/* copy image and text pixmaps to notification pixmap */
+	if (item->image) {
+		XCopyArea(dpy, imagepixmap, item->pixmap, dc.gc, 0, 0,
+		          config.image_pixels, config.image_pixels,
+		          config.padding_pixels,
+		          (item->h - imageh) / 2);
+		XFreePixmap(dpy, imagepixmap);
+	}
+	XCopyArea(dpy, textpixmap, item->pixmap, dc.gc, 0, 0, item->textw, texth,
+		  config.padding_pixels + (imageh > 0 ? imageh + config.padding_pixels : 0),
+		  (item->h - texth) / 2);
+	XFreePixmap(dpy, textpixmap);
 	XftDrawDestroy(draw);
 }
 
@@ -796,15 +800,15 @@ resettime(struct Item *item)
 static void
 additem(struct Queue *queue, struct Itemspec *itemspec)
 {
+	struct Fonts *fnt;
+	const char *text;
 	struct Item *item;
-	int titlew, bodyw;
-	int w, h;
+	int w, i;
+	int maxw;
 
 	if ((item = malloc(sizeof *item)) == NULL)
 		err(1, "malloc");
 	item->next = NULL;
-	item->title = strdup(itemspec->title);
-	item->body = (itemspec->body) ? strdup(itemspec->body) : NULL;
 	item->image = (itemspec->file) ? loadimage(itemspec->file, &item->imgw, &item->imgh) : NULL;
 	item->tag = (itemspec->tag) ? strdup(itemspec->tag) : NULL;
 	item->cmd = (itemspec->cmd) ? strdup(itemspec->cmd) : NULL;
@@ -816,6 +820,15 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	item->prev = queue->tail;
 	queue->tail = item;
 
+	/* allocate texts */
+	item->line[0] = strdup(itemspec->firstline);
+	text = strtok(itemspec->otherlines, "\t\n");
+	for (i = 1; i < MAXLINES && text != NULL; i++) {
+		item->line[i] = strdup(text);
+		text = strtok(NULL, "\t\n");
+	}
+	item->nlines = i;
+
 	/* allocate colors */
 	if (!itemspec->background || ealloccolor(itemspec->background, &item->background, 0) == -1)
 		item->background = dc.background;
@@ -824,28 +837,33 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	if (!itemspec->border || ealloccolor(itemspec->border, &item->border, 0) == -1)
 		item->border = dc.border;
 
-	/* compute notification height */
-	if (item->body)
-		h = titlefnt.texth + bodyfnt.texth + config.padding_pixels + config.leading_pixels;
-	else
-		h = titlefnt.texth + config.padding_pixels;
-	
-	h = config.padding_pixels + ((item->image) ? MAX(h, config.image_pixels) : h);
-	item->h = MAX(h, queue->h);
-
 	/* compute notification width */
 	if (config.shrink) {
-		titlew = drawtext(&titlefnt, NULL, NULL, 0, 0, item->title);
-		bodyw = (item->body) ? drawtext(&bodyfnt, NULL, NULL, 0, 0, item->body) : 0;
-		w = MAX(titlew, bodyw);
-		if (item->image) {
-			w += config.image_pixels + config.padding_pixels * 2;
-		} else {
-			w += config.padding_pixels * 2;
+		maxw = 0;
+		for (i = 0; i < item->nlines; i++) {
+			text = item->line[i];
+			fnt = (i == 0 && item->nlines > 1) ? &titlefnt : &bodyfnt;
+			w = drawtext(fnt, NULL, NULL, 0, 0, 0, &text);
+			if (w > maxw) {
+				maxw = w;
+			}
 		}
-		item->w = MIN(w, queue->w);
+		if (item->image) {
+			item->textw = queue->w - config.image_pixels - config.padding_pixels * 2;
+			item->textw = MIN(maxw, item->textw);
+			item->w = item->textw + config.image_pixels + config.padding_pixels * 2;
+		} else {
+			item->textw = queue->w - config.padding_pixels * 2;
+			item->textw = MIN(maxw, item->textw);
+			item->w = item->textw + config.padding_pixels * 2;
+		}
 	} else {
 		item->w = queue->w;
+		if (item->image) {
+			item->textw = queue->w - config.image_pixels - config.padding_pixels * 3;
+		} else {
+			item->textw = queue->w - config.padding_pixels * 2;
+		}
 	}
 
 	/* call functions that set the item */
@@ -861,9 +879,10 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 static void
 delitem(struct Queue *queue, struct Item *item)
 {
-	free(item->title);
-	if (item->body)
-		free(item->body);
+	int i;
+
+	for (i = 0; i < item->nlines; i++)
+		free(item->line[i]);
 	XFreePixmap(dpy, item->pixmap);
 	XDestroyWindow(dpy, item->win);
 	if (item->prev)
@@ -918,9 +937,6 @@ parseline(char *s)
 	if ((itemspec = malloc(sizeof *itemspec)) == NULL)
 		err(1, "malloc");
 
-	/* get the title */
-	itemspec->title = strtok(s, "\t\n");
-
 	/* get the filename */
 	itemspec->file = NULL;
 	itemspec->foreground = NULL;
@@ -929,37 +945,38 @@ parseline(char *s)
 	itemspec->tag = NULL;
 	itemspec->cmd = NULL;
 	itemspec->sec = config.sec;
-	while (itemspec->title && (option = optiontype(itemspec->title)) != UNKNOWN) {
+	itemspec->firstline = strtok(s, "\t\n");
+	while (itemspec->firstline && (option = optiontype(itemspec->firstline)) != UNKNOWN) {
 		switch (option) {
 		case IMG:
-			itemspec->file = itemspec->title + 4;
-			itemspec->title = strtok(NULL, "\t\n");
+			itemspec->file = itemspec->firstline + 4;
+			itemspec->firstline = strtok(NULL, "\t\n");
 			break;
 		case BG:
-			itemspec->background = itemspec->title + 3;
-			itemspec->title = strtok(NULL, "\t\n");
+			itemspec->background = itemspec->firstline + 3;
+			itemspec->firstline = strtok(NULL, "\t\n");
 			break;
 		case FG:
-			itemspec->foreground = itemspec->title + 3;
-			itemspec->title = strtok(NULL, "\t\n");
+			itemspec->foreground = itemspec->firstline + 3;
+			itemspec->firstline = strtok(NULL, "\t\n");
 			break;
 		case BRD:
-			itemspec->border = itemspec->title + 4;
-			itemspec->title = strtok(NULL, "\t\n");
+			itemspec->border = itemspec->firstline + 4;
+			itemspec->firstline = strtok(NULL, "\t\n");
 			break;
 		case TAG:
-			itemspec->tag = itemspec->title + 4;
-			itemspec->title = strtok(NULL, "\t\n");
+			itemspec->tag = itemspec->firstline + 4;
+			itemspec->firstline = strtok(NULL, "\t\n");
 			break;
 		case CMD:
-			itemspec->cmd = itemspec->title + 4;
-			itemspec->title = strtok(NULL, "\t\n");
+			itemspec->cmd = itemspec->firstline + 4;
+			itemspec->firstline = strtok(NULL, "\t\n");
 			break;
 		case SEC:
-			t = itemspec->title + 4;
+			t = itemspec->firstline + 4;
 			if (!getnum(&t, &n))
 				itemspec->sec = n;
-			itemspec->title = strtok(NULL, "\t\n");
+			itemspec->firstline = strtok(NULL, "\t\n");
 			break;
 		default:
 			break;
@@ -967,12 +984,12 @@ parseline(char *s)
 	}
 
 	/* get the body */
-	itemspec->body = strtok(NULL, "\n");
-	if (itemspec->body)
-		while (*itemspec->body == '\t')
-			itemspec->body++;
+	itemspec->otherlines = strtok(NULL, "\n");
+	if (itemspec->otherlines)
+		while (*itemspec->otherlines == '\t')
+			itemspec->otherlines++;
 
-	if (!itemspec->title)
+	if (!itemspec->firstline)
 		return NULL;
 
 	return itemspec;

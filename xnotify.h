@@ -1,6 +1,14 @@
+/* macros */
+#define DEFWIDTH            350     /* default width of a notification */
+#define MAXLINES            10      /* maximum number of unwrapped lines */
+#define MIN(x,y)            ((x)<(y)?(x):(y))
+#define MAX(x,y)            ((x)>(y)?(x):(y))
+#define BETWEEN(x, a, b)    ((a) <= (x) && (x) <= (b))
+
 enum ItemOption {IMG, BG, FG, BRD, TAG, CMD, SEC, UNKNOWN};
 enum {DownWards, UpWards};
 enum {LeftAlignment, CenterAlignment, RightAlignment};
+enum {MidWord, WhiteSpace, Ellipsis, NoWrap};
 enum {
 	NetWMName,
 	NetWMWindowType,
@@ -27,9 +35,11 @@ struct Config {
 	int image_pixels;
 	int leading_pixels;
 	int padding_pixels;
+	int max_height;
 
 	int alignment;
 	int shrink;
+	int wrap;
 
 	int sec;
 
@@ -56,13 +66,13 @@ struct Fonts {
 	FcPattern *pattern;
 	XftFont **fonts;
 	size_t nfonts;
-	int texth;          /* text height, also used for padding */
+	int texth;          /* text height */
 };
 
 /* notification item specification structure */
 struct Itemspec {
-	char *title;
-	char *body;
+	char *firstline;
+	char *otherlines;
 	char *file;
 	char *background;
 	char *foreground;
@@ -76,8 +86,9 @@ struct Itemspec {
 struct Item {
 	struct Item *prev, *next;
 
-	char *title;
-	char *body;
+	int nlines;
+
+	char *line[MAXLINES];
 	char *tag;
 	char *cmd;
 
@@ -86,6 +97,7 @@ struct Item {
 
 	int w, h;
 	int imgw, imgh;
+	int textw;
 
 	XftColor background;
 	XftColor foreground;
