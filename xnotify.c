@@ -92,6 +92,10 @@ getresources(void)
 		config.shrink = (strcasecmp(xval.addr, "true") == 0 ||
 		                strcasecmp(xval.addr, "on") == 0 ||
 		                strcasecmp(xval.addr, "1") == 0);
+	if (XrmGetResource(xdb, "xnotify.wrap", "*", &type, &xval) == True)
+		config.wrap = (strcasecmp(xval.addr, "true") == 0 ||
+		                strcasecmp(xval.addr, "on") == 0 ||
+		                strcasecmp(xval.addr, "1") == 0);
 	if (XrmGetResource(xdb, "xnotify.alignment", "*", &type, &xval) == True) {
 		if (strcasecmp(xval.addr, "center") == 0)
 			config.alignment = CenterAlignment;
@@ -675,10 +679,14 @@ getfontucode(struct Fonts *fnt, FcChar32 ucode)
 static int
 drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w, const char **s)
 {
+	static char *ellipsis = "…";
+	static int ellwidth = 0;
+	static FcChar32 ellucode;
+	static XftFont *ellfont;
 	XftFont *currfont;
 	XGlyphInfo ext;
 	FcChar32 ucode;
-	const char *text, *next, *check;
+	const char *text, *next, *check, *t;
 	size_t len;
 	int textwidth = 0;
 	int wordwidth = 0;
@@ -714,6 +722,13 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 	 * way to implement a function to draw text.
 	 */
 
+	if (ellwidth == 0) {
+		ellucode = getnextutf8char(ellipsis, &next);
+		ellfont = getfontucode(fnt, ellucode);
+		XftTextExtentsUtf8(dpy, ellfont, (XftChar8 *)ellipsis, strlen(ellipsis), &ext);
+		ellwidth = ext.xOff;
+	}
+
 	text = *s;
 	while (isspace(*text))
 		text++;
@@ -742,11 +757,25 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 		/* compute the width of the glyph for that character on that font */
 		len = next - text;
 		XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)text, len, &ext);
+		t = text;
+		if (textwidth + ext.xOff + ellwidth > w) {
+			t = ellipsis;
+			len = strlen(ellipsis);
+			currfont = ellfont;
+			if (config.wrap) {
+				while (*next && !isspace(*next++))
+					;
+			} else {
+				while (*next++)
+					;
+			}
+			textwidth += ellwidth;
+		}
 		textwidth += ext.xOff;
 
 		if (draw) {
 			texty = y + (fnt->texth - (currfont->ascent + currfont->descent))/2 + currfont->ascent;
-			XftDrawStringUtf8(draw, color, currfont, x, texty, (XftChar8 *)text, len);
+			XftDrawStringUtf8(draw, color, currfont, x, texty, (XftChar8 *)t, len);
 			x += ext.xOff;
 			*s = next;
 		}

@@ -50,7 +50,7 @@ by the desired width,
 .B <HEIGHT>
 by the desired minimum height, and so on.
 The height is the minimum height of a notification;
-a notification that contains a body or an image can get bigger than this minimum height.
+a notification that contains a more than one line or an image can get bigger than this minimum height.
 A value of 0 sets a field to the default value.
 So, for example,
 .B -g 0x80+0+0
@@ -89,16 +89,18 @@ Without this option, the default of 10 seconds is used.
 Each line read from stdin specify a notification and has the following format:
 .IP
 .EX
-ITEM := [NAME:VALUE TABS] TITLE [TABS BODY] NEWLINE
+ITEM := [NAME:VALUE TABS] TEXT NEWLINE
 .EE
 .PP
 That means that each line is composed by
 an optional set of name-value pairs separated by colon (:) followed by tabs,
-then the title text of the notification,
-then a optional body text of the notification preceded by tabs,
+then the text of the notification,
 then a newline.
 Brackets group optional elements.
 Empty lines are ignored.
+.PP
+The TEXT of a notification specification can contain tabs.
+Each tab is converted to a line break on the notification.
 .PP
 The following names are currently accepted for the NAME:VALUE pairs:
 .TP
@@ -141,12 +143,14 @@ understands the following X resources.
 .TP
 .B xnotify.title.font
 The fonts to draw the notification title text.
+The title is the first line of the notification, if there is more than one.
 More than one font can be specified, separated by comma (,).
 If more than one font is specified, the first font with a given glyph
 is used to display that glyph on the screen.
 .TP
 .B xnotify.body.font
 The fonts to draw the notification body text.
+The body text is any line after the first line.
 .TP
 .B xnotify.background
 The color of the notification background.
@@ -180,7 +184,7 @@ The gap between notifications.
 The size of the image attached to the notification.
 .TP
 .B xnotify.leading
-The space between the title text and the body text.
+The space between lines.
 .TP
 .B xnotify.padding
 The space around the content inside the notification popup window.
@@ -188,7 +192,10 @@ The space around the content inside the notification popup window.
 .B xnotify.shrink
 If set to
 .BR "\(dqtrue\(dq" ,
-the image width will shrink to its content size.
+the notification width will shrink to its content size.
+If set to
+.BR "\(dqfalse\(dq" ,
+notification width will be constant.
 .TP
 .B xnotify.alignment
 If set to
@@ -198,6 +205,15 @@ or
 .BR "\(dqright\(dq" ,
 text is aligned to the left, center, or right of the popup window, respectively.
 By default, notification text is aligned to the left of the notification popup window.
+.TP
+.B xnotify.wrap
+If set to
+.BR "\(dqtrue\(dq" ,
+lines longer than the notification width will wrap rather than being truncated.
+That is the default.
+If set to
+.BR "\(dqfalse\(dq" ,
+lines will be truncated.
 .SH SIGNALS
 .B xnotify
 respond to signals sent to it.
