@@ -668,42 +668,94 @@ getfontucode(struct Fonts *fnt, FcChar32 ucode)
 	return fnt->fonts[0];
 }
 
-/* return width of text glyphs; draw text into draw if draw != NULL */
+/*
+ * return width of *s in pixels; draw *s into draw if draw != NULL
+ * return in *s where stopped processing when text wrapping occurs
+ */
 static int
 drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w, const char **s)
 {
 	XftFont *currfont;
 	XGlyphInfo ext;
 	FcChar32 ucode;
-	const char *orig, *text, *next;
+	const char *text, *next, *check;
 	size_t len;
 	int textwidth = 0;
+	int wordwidth = 0;
 	int texty;
 
-	orig = text = *s;
+	/*
+	 * This function can be optimized.  It loops through the string,
+	 * uchar-by-uchar*,  calling getfontucode() on each iteration to
+	 * get the font that support that uchar.
+	 *
+	 * (uchar = unicode character)
+	 *
+	 * When we are wrapping text (i.e., when config.wrap is nonzero)
+	 * we call getnextutf8char()  and getfontucode()  twice for each
+	 * uchar. First to compute the size of a word, and a second time
+	 * to draw the uchar; there probably is a more elegant way to do
+	 * this.
+	 *
+	 * Worse: this function is called twice by drawitem(), the first
+	 * time in the while condition, with the parameter draw equal to
+	 * NULL, in order to compute the size of the next line for the x
+	 * alignment;  and a second time in the while body,  in order to
+	 * actually draw the line.
+	 *
+	 * Suckless software have the function drw_text() that process a
+	 * sequence of uchars with the same font at a time,  rather than
+	 * one uchar at a time.   But their function is a mess (or maybe
+	 * I'm not that clever to understand it).
+	 *
+	 * See: https://git.suckless.org/dwm/file/drw.c.html#l252
+	 *
+	 * Feel free to contribute to this project, if you know a better
+	 * way to implement a function to draw text.
+	 */
+
+	text = *s;
+	while (isspace(*text))
+		text++;
+	check = text;
 	while (*text) {
+		/* wrap text if next word doesn't fit in w */
+		wordwidth = 0;
+		while (config.wrap && w && *check && !isspace(*check)) {
+			ucode = getnextutf8char(check, &next);
+			currfont = getfontucode(fnt, ucode);
+			len = next - check;
+			XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)check, len, &ext);
+			wordwidth += ext.xOff;
+			check = next;
+			if (w && textwidth && textwidth + wordwidth > w) {
+				if (draw)
+					*s = text;
+				goto end;
+			}
+		}
+
+		/* get the next unicode character and the first font that supports it */
 		ucode = getnextutf8char(text, &next);
 		currfont = getfontucode(fnt, ucode);
+
+		/* compute the width of the glyph for that character on that font */
 		len = next - text;
 		XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)text, len, &ext);
 		textwidth += ext.xOff;
-		if (w && textwidth > w) {
-			if (text == orig)
-				return 0;
-			if (config.wrap == MidWord) {
-				if (draw)
-					*s = text;
-				break;
-			}
-		}
+
 		if (draw) {
 			texty = y + (fnt->texth - (currfont->ascent + currfont->descent))/2 + currfont->ascent;
 			XftDrawStringUtf8(draw, color, currfont, x, texty, (XftChar8 *)text, len);
 			x += ext.xOff;
 			*s = next;
 		}
+
+		if (next > check)
+			check = next;
 		text = next;
 	}
+end:
 	return textwidth;
 }
 

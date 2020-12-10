@@ -8,7 +8,6 @@
 enum ItemOption {IMG, BG, FG, BRD, TAG, CMD, SEC, UNKNOWN};
 enum {DownWards, UpWards};
 enum {LeftAlignment, CenterAlignment, RightAlignment};
-enum {MidWord, WhiteSpace, Ellipsis, NoWrap};
 enum {
 	NetWMName,
 	NetWMWindowType,
@@ -87,7 +86,6 @@ struct Item {
 	struct Item *prev, *next;
 
 	int nlines;
-
 	char *line[MAXLINES];
 	char *tag;
 	char *cmd;

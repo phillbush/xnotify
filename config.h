@@ -26,8 +26,8 @@ static struct Config config = {
 	/* set to nonzero to shrink notification width to its content size */
 	.shrink = 0,
 
-	/* how to wrap or truncate; set to MidWord, WhiteSpace, Ellipsis, or NoWrap */
-	.wrap = NoWrap,
+	/* whether to wrap text */
+	.wrap = 1,
 
 	/* time, in seconds, for a notification to stay alive */
 	.sec = 10,
