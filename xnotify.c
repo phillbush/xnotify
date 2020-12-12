@@ -1,6 +1,5 @@
 #include <ctype.h>
 #include <err.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
@@ -188,8 +187,7 @@ getnum(const char **s, int *n)
 	char *endp;
 
 	num = strtol(*s, &endp, 10);
-	errno = 0;
-	retval = (errno == ERANGE || num > INT_MAX || num < 0 || endp == *s);
+	retval = (num > INT_MAX || num < 0 || endp == *s);
 	*s = endp;
 	*n = num;
 	return retval;
@@ -722,6 +720,7 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 	 * way to implement a function to draw text.
 	 */
 
+	/* compute font and width of the ellipsis (used for truncating text) */
 	if (ellwidth == 0) {
 		ellucode = getnextutf8char(ellipsis, &next);
 		ellfont = getfontucode(fnt, ellucode);
