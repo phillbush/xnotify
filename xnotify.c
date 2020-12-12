@@ -1224,7 +1224,7 @@ main(int argc, char *argv[])
 	char buf[BUFSIZ];       /* buffer for stdin */
 	int timeout = -1;       /* maximum interval for poll(2) to complete */
 	int flags;              /* status flags for stdin */
-	int done = 0;           /* set to 1 when stdin reaches EOF */
+	int reading = 1;        /* set to 0 when stdin reaches EOF */
 
 	/* open connection to server and set X variables */
 	if ((dpy = XOpenDisplay(NULL)) == NULL)
@@ -1272,11 +1272,11 @@ main(int argc, char *argv[])
 	pfd[0].events = pfd[1].events = POLLIN;
 
 	/* run main loop */
-	for (;;) {
+	do {
 		if (poll(pfd, 2, timeout) > 0) {
 			if (pfd[0].revents & POLLHUP) {
 				pfd[0].fd = -1;
-				done = 1;
+				reading = 0;
 			}
 			if (pfd[0].revents & POLLIN) {
 				if (fgets(buf, sizeof buf, stdin) == NULL)
@@ -1305,10 +1305,7 @@ main(int argc, char *argv[])
 			moveitems(queue);
 		timeout = (queue->head) ? 1000 : -1;
 		XFlush(dpy);
-
-		if (done && !queue->head)
-			break;
-	}
+	} while (reading || queue->head);
 
 	/* clean up stuff */
 	cleanitems(queue, NULL);
