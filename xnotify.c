@@ -876,6 +876,17 @@ resettime(struct Item *item)
 	item->time = time(NULL);
 }
 
+/* call strdup checking for error */
+static char *
+estrdup(const char *s)
+{
+	char *t;
+
+	if ((t = strdup(s)) == NULL)
+		err(1, "strdup");
+	return t;
+}
+
 /* add item notification item and set its window and contents */
 static void
 additem(struct Queue *queue, struct Itemspec *itemspec)
@@ -890,8 +901,8 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 		err(1, "malloc");
 	item->next = NULL;
 	item->image = (itemspec->file) ? loadimage(itemspec->file, &item->imgw, &item->imgh) : NULL;
-	item->tag = (itemspec->tag) ? strdup(itemspec->tag) : NULL;
-	item->cmd = (itemspec->cmd) ? strdup(itemspec->cmd) : NULL;
+	item->tag = (itemspec->tag) ? estrdup(itemspec->tag) : NULL;
+	item->cmd = (itemspec->cmd) ? estrdup(itemspec->cmd) : NULL;
 	item->sec = itemspec->sec;
 	if (!queue->head)
 		queue->head = item;
@@ -901,10 +912,10 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	queue->tail = item;
 
 	/* allocate texts */
-	item->line[0] = strdup(itemspec->firstline);
+	item->line[0] = estrdup(itemspec->firstline);
 	text = strtok(itemspec->otherlines, "\t\n");
 	for (i = 1; i < MAXLINES && text != NULL; i++) {
-		item->line[i] = strdup(text);
+		item->line[i] = estrdup(text);
 		text = strtok(NULL, "\t\n");
 	}
 	item->nlines = i;
