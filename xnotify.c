@@ -703,21 +703,9 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 	 * to draw the uchar; there probably is a more elegant way to do
 	 * this.
 	 *
-	 * Worse: this function is called twice by drawitem(), the first
-	 * time in the while condition, with the parameter draw equal to
-	 * NULL, in order to compute the size of the next line for the x
-	 * alignment;  and a second time in the while body,  in order to
-	 * actually draw the line.
-	 *
-	 * Suckless software have the function drw_text() that process a
-	 * sequence of uchars with the same font at a time,  rather than
-	 * one uchar at a time.   But their function is a mess (or maybe
-	 * I'm not that clever to understand it).
-	 *
-	 * See: https://git.suckless.org/dwm/file/drw.c.html#l252
-	 *
 	 * Feel free to contribute to this project, if you know a better
-	 * way to implement a function to draw text.
+	 * way to implement a function that draws text which also checks
+	 * for the size the of the text in order to wrap it.
 	 */
 
 	/* compute font and width of the ellipsis (used for truncating text) */
