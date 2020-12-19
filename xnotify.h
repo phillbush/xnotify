@@ -120,3 +120,11 @@ struct Queue {
 	/* whether the queue changed */
 	int change;
 };
+
+/* ellipsis size and font structure */
+struct Ellipsis {
+	char *s;
+	size_t len;     /* length of s */
+	int width;      /* size of ellipsis string */
+	XftFont *font;  /* font containing ellipsis */
+};

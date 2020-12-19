@@ -35,3 +35,6 @@ static struct Config config = {
 	/* mouse button that makes xnotify prints a notification's CMD: */
 	.actionbutton = Button3
 };
+
+/* string to be replaced by truncated text, should be a single unicode character */
+#define ELLIPSIS "…"

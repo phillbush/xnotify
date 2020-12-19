@@ -31,6 +31,7 @@ static Atom utf8string;
 static Atom netatom[NetLast];
 static struct DC dc;
 static struct Fonts titlefnt, bodyfnt;
+static struct Ellipsis ellipsis;
 
 /* flags */
 static int oflag = 0;   /* whether only one notification must exist at a time */
@@ -440,7 +441,7 @@ setqueue(void)
 	/* set geometry of notification queue */
 	parsegravityspec(&queue->gravity, &queue->direction);
 	parsegeometryspec(&queue->x, &queue->y, &queue->w, &queue->h);
-	if (queue->w == 0)
+	if (queue->w <= ellipsis.width + config.image_pixels + config.padding_pixels * 3)
 		queue->w = DEFWIDTH;
 
 	if (config.image_pixels <= 0)
@@ -677,10 +678,6 @@ getfontucode(struct Fonts *fnt, FcChar32 ucode)
 static int
 drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w, const char **s)
 {
-	static char *ellipsis = "…";
-	static int ellwidth = 0;
-	static FcChar32 ellucode;
-	static XftFont *ellfont;
 	XftFont *currfont;
 	XGlyphInfo ext;
 	FcChar32 ucode;
@@ -707,15 +704,6 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 	 * way to implement a function that draws text which also checks
 	 * for the size the of the text in order to wrap it.
 	 */
-
-	/* compute font and width of the ellipsis (used for truncating text) */
-	if (ellwidth == 0) {
-		ellucode = getnextutf8char(ellipsis, &next);
-		ellfont = getfontucode(fnt, ellucode);
-		XftTextExtentsUtf8(dpy, ellfont, (XftChar8 *)ellipsis, strlen(ellipsis), &ext);
-		ellwidth = ext.xOff;
-	}
-
 	text = *s;
 	while (isspace(*text))
 		text++;
@@ -745,10 +733,10 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 		len = next - text;
 		XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)text, len, &ext);
 		t = text;
-		if (textwidth + ext.xOff + ellwidth > w) {
-			t = ellipsis;
-			len = strlen(ellipsis);
-			currfont = ellfont;
+		if (textwidth + ext.xOff + ellipsis.width > w) {
+			t = ellipsis.s;
+			len = ellipsis.len;
+			currfont = ellipsis.font;
 			if (config.wrap) {
 				while (*next && !isspace(*next++))
 					;
@@ -756,7 +744,7 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 				while (*next++)
 					;
 			}
-			textwidth += ellwidth;
+			textwidth += ellipsis.width;
 		}
 		textwidth += ext.xOff;
 
@@ -1215,6 +1203,22 @@ cleandc(void)
 	XFreeGC(dpy, dc.gc);
 }
 
+/* compute font and width of ellipsis string */
+static void
+initellipsis(void)
+{
+	XGlyphInfo ext;
+	FcChar32 ucode;
+	const char *s;
+
+	ellipsis.s = ELLIPSIS;
+	ellipsis.len = strlen(ellipsis.s);
+	ucode = getnextutf8char(ellipsis.s, &s);
+	ellipsis.font = getfontucode(&bodyfnt, ucode);
+	XftTextExtentsUtf8(dpy, ellipsis.font, (XftChar8 *)ellipsis.s, ellipsis.len, &ext);
+	ellipsis.width = ext.xOff;
+}
+
 /* xnotify: show notifications from stdin */
 int
 main(int argc, char *argv[])
@@ -1257,6 +1261,7 @@ main(int argc, char *argv[])
 	initdc();
 	initatoms();
 	initstructurenotify();
+	initellipsis();
 
 	/* set up queue of notifications */
 	queue = setqueue();
