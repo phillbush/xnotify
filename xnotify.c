@@ -784,7 +784,7 @@ drawitem(struct Item *item)
 	const char *text;
 	XftDraw *draw;
 	int xaligned;
-	int i, x;
+	int i, x, newh;
 	int texth, imageh;
 
 	item->pixmap = XCreatePixmap(dpy, item->win, item->w, config.max_height, depth);
@@ -836,7 +836,8 @@ drawitem(struct Item *item)
 	texth -= config.leading_pixels;
 
 	/* resize notification window based on its contents */
-	item->h = MAX(imageh, texth) + 2 * config.padding_pixels;
+	newh = MAX(imageh, texth) + 2 * config.padding_pixels;
+	item->h = MAX(item->h, newh);
 	XResizeWindow(dpy, item->win, item->w, item->h);
 
 	/* change border color */
@@ -916,7 +917,8 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	if (!itemspec->border || ealloccolor(itemspec->border, &item->border, 0) == -1)
 		item->border = dc.border;
 
-	/* compute notification width */
+	/* compute notification width and height */
+	item->h = queue->h;
 	if (config.shrink) {
 		maxw = 0;
 		for (i = 0; i < item->nlines; i++) {
