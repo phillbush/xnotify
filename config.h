@@ -27,7 +27,7 @@ static struct Config config = {
 	.shrink = 0,
 
 	/* whether to wrap text */
-	.wrap = 1,
+	.wrap = 0,
 
 	/* time, in seconds, for a notification to stay alive */
 	.sec = 10,
