@@ -734,7 +734,7 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 		len = next - text;
 		XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)text, len, &ext);
 		t = text;
-		if (textwidth + ext.xOff + ellipsis.width > w) {
+		if (w && textwidth + ext.xOff + ellipsis.width > w) {
 			t = ellipsis.s;
 			len = ellipsis.len;
 			currfont = ellipsis.font;
@@ -918,10 +918,11 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 				maxw = w;
 			}
 		}
+		maxw += ellipsis.width;
 		if (item->image) {
-			item->textw = queue->w - config.image_pixels - config.padding_pixels * 2;
+			item->textw = queue->w - config.image_pixels - config.padding_pixels * 3;
 			item->textw = MIN(maxw, item->textw);
-			item->w = item->textw + config.image_pixels + config.padding_pixels * 2;
+			item->w = item->textw + config.image_pixels + config.padding_pixels * 3;
 		} else {
 			item->textw = queue->w - config.padding_pixels * 2;
 			item->textw = MIN(maxw, item->textw);
