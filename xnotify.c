@@ -523,6 +523,7 @@ loadimage(const char *file, int *width_ret, int *height_ret)
 	}
 
 	imlib_context_set_image(image);
+	imlib_image_set_changes_on_disk();
 
 	width = imlib_image_get_width();
 	height = imlib_image_get_height();
