@@ -739,11 +739,11 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 			len = ellipsis.len;
 			currfont = ellipsis.font;
 			if (config.wrap) {
-				while (*next && !isspace(*next++))
-					;
+				while (*next && !isspace(*next))
+					next++;
 			} else {
-				while (*next++)
-					;
+				while (*next)
+					next++;
 			}
 			textwidth += ellipsis.width;
 		}
@@ -774,14 +774,14 @@ drawitem(struct Item *item)
 	XftDraw *draw;
 	int xaligned;
 	int i, x, newh;
-	int texth, imageh;
+	int texth, imageh, imagew;
 
 	item->pixmap = XCreatePixmap(dpy, item->win, item->w, config.max_height, depth);
 	XSetForeground(dpy, dc.gc, item->background.pixel);
 	XFillRectangle(dpy, item->pixmap, dc.gc, 0, 0, item->w, config.max_height);
 
 	/* draw image */
-	imageh = 0;
+	imagew = imageh = 0;
 	if (item->image) {
 		imagepixmap = XCreatePixmap(dpy, item->pixmap, config.image_pixels, config.image_pixels, depth);
 		XFillRectangle(dpy, imagepixmap, dc.gc, 0, 0, config.image_pixels, config.image_pixels);
@@ -790,7 +790,8 @@ drawitem(struct Item *item)
 		imlib_render_image_on_drawable((config.image_pixels - item->imgw) / 2,
 		                               (config.image_pixels - item->imgh) / 2);
 		imlib_free_image();
-		imageh = config.image_pixels;
+		imageh = item->imgh;
+		imagew = config.image_pixels;
 	}
 
 	/* draw text */
@@ -837,11 +838,11 @@ drawitem(struct Item *item)
 		XCopyArea(dpy, imagepixmap, item->pixmap, dc.gc, 0, 0,
 		          config.image_pixels, config.image_pixels,
 		          config.padding_pixels,
-		          (item->h - imageh) / 2);
+		          (item->h - config.image_pixels) / 2);
 		XFreePixmap(dpy, imagepixmap);
 	}
 	XCopyArea(dpy, textpixmap, item->pixmap, dc.gc, 0, 0, item->textw, texth,
-		  config.padding_pixels + (imageh > 0 ? imageh + config.padding_pixels : 0),
+		  config.padding_pixels + (imagew > 0 ? imagew + config.padding_pixels : 0),
 		  (item->h - texth) / 2);
 	XFreePixmap(dpy, textpixmap);
 	XftDrawDestroy(draw);
