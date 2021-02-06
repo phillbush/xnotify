@@ -688,27 +688,7 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 	int wordwidth = 0;
 	int texty;
 
-	/*
-	 * This function can be optimized.  It loops through the string,
-	 * uchar-by-uchar*,  calling getfontucode() on each iteration to
-	 * get the font that support that uchar.
-	 *
-	 * (uchar = unicode character)
-	 *
-	 * When we are wrapping text (i.e., when config.wrap is nonzero)
-	 * we call getnextutf8char()  and getfontucode()  twice for each
-	 * uchar. First to compute the size of a word, and a second time
-	 * to draw the uchar; there probably is a more elegant way to do
-	 * this.
-	 *
-	 * Feel free to contribute to this project, if you know a better
-	 * way to implement a function that draws text which also checks
-	 * for the size the of the text in order to wrap it.
-	 */
-	text = *s;
-	while (isspace(*text))
-		text++;
-	check = text;
+	check = text = *s;
 	while (*text) {
 		/* wrap text if next word doesn't fit in w */
 		wordwidth = 0;
