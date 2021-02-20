@@ -44,7 +44,7 @@ volatile sig_atomic_t usrflag;  /* 1 if for SIGUSR1, 2 for SIGUSR2, 0 otherwise 
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-b button] [-g geometry] [-m monitor] [-s seconds]\n");
+	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-b button] [-g geometry] [-m monitor] [-s seconds] [-l lines]\n");
 	exit(1);
 }
 
@@ -88,6 +88,9 @@ getresources(void)
 	if (XrmGetResource(xdb, "xnotify.padding", "*", &type, &xval) == True)
 		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
 			config.padding_pixels = n;
+	if (XrmGetResource(xdb, "xnotify.maxLines", "*", &type, &xval) == True)
+		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
+			config.maxlines = n;
 	if (XrmGetResource(xdb, "xnotify.shrink", "*", &type, &xval) == True)
 		config.shrink = (strcasecmp(xval.addr, "true") == 0 ||
 		                strcasecmp(xval.addr, "on") == 0 ||
@@ -113,7 +116,7 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:b:g:m:os:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:b:g:m:l:os:")) != -1) {
 		switch (ch) {
 		case 'G':
 			config.gravityspec = optarg;
@@ -149,6 +152,10 @@ getoptions(int argc, char *argv[])
 			break;
 		case 'o':
 			oflag = 1;
+			break;
+		case 'l':
+			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
+				config.maxlines = n;
 			break;
 		case 's':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
@@ -871,9 +878,10 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	queue->tail = item;
 
 	/* allocate texts */
+	item->line = malloc(sizeof(char *) * config.maxlines);
 	item->line[0] = estrdup(itemspec->firstline);
 	text = strtok(itemspec->otherlines, "\t\n");
-	for (i = 1; i < MAXLINES && text != NULL; i++) {
+	for (i = 1; i < config.maxlines && text != NULL; i++) {
 		item->line[i] = estrdup(text);
 		text = strtok(NULL, "\t\n");
 	}
@@ -935,6 +943,7 @@ delitem(struct Queue *queue, struct Item *item)
 
 	for (i = 0; i < item->nlines; i++)
 		free(item->line[i]);
+	free(item->line);
 	XFreePixmap(dpy, item->pixmap);
 	XDestroyWindow(dpy, item->win);
 	if (item->prev)

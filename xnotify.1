@@ -12,6 +12,8 @@ xnotify \- popup a notification on the screen
 .IR geometry ]
 .RB [ \-m
 .IR monitor ]
+.RB [ \-l
+.IR lines ]
 .RB [ \-s
 .IR seconds ]
 .SH DESCRIPTION
@@ -75,6 +77,9 @@ Makes xnotify be displayed on the specified monitor.
 Monitor numbers start from 0.
 Without this option,
 xnotify is displayed on the first monitor (that is, the monitor 0).
+.TP
+.BI "\-l " lines
+Maximum number of lines that xnotify should display in a single notification.
 .TP
 .B \-o
 With this option,

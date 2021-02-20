@@ -1,6 +1,5 @@
 /* macros */
 #define DEFWIDTH            350     /* default width of a notification */
-#define MAXLINES            10      /* maximum number of unwrapped lines */
 #define MIN(x,y)            ((x)<(y)?(x):(y))
 #define MAX(x,y)            ((x)>(y)?(x):(y))
 #define BETWEEN(x, a, b)    ((a) <= (x) && (x) <= (b))
@@ -43,6 +42,8 @@ struct Config {
 	int sec;
 
 	unsigned int actionbutton;
+
+	int maxlines;
 };
 
 /* monitor geometry structure */
@@ -86,7 +87,7 @@ struct Item {
 	struct Item *prev, *next;
 
 	int nlines;
-	char *line[MAXLINES];
+	char **line;
 	char *tag;
 	char *cmd;
 
