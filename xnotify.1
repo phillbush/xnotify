@@ -10,6 +10,8 @@ xnotify \- popup a notification on the screen
 .IR button ]
 .RB [ \-g
 .IR geometry ]
+.RB [ \-h
+.IR height ]
 .RB [ \-m
 .IR monitor ]
 .RB [ \-s
@@ -70,14 +72,14 @@ and
 is the same as
 .BR "-g 0x0-10+10" .
 .TP
+.BI "\-h " height
+Maximum height (in pixels) of a notification window.
+.TP
 .BI "\-m " monitor
 Makes xnotify be displayed on the specified monitor.
 Monitor numbers start from 0.
 Without this option,
 xnotify is displayed on the first monitor (that is, the monitor 0).
-.TP
-.BI "\-y " height
-Maximum height (in pixels) of a notification window.
 .TP
 .B \-o
 With this option,
