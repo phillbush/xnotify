@@ -42,6 +42,8 @@ struct Config {
 	int sec;
 
 	unsigned int actionbutton;
+
+	int vertical;
 };
 
 /* monitor geometry structure */

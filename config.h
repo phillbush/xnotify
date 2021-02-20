@@ -33,7 +33,10 @@ static struct Config config = {
 	.sec = 10,
 
 	/* mouse button that makes xnotify prints a notification's CMD: */
-	.actionbutton = Button3
+	.actionbutton = Button3,
+
+	/* display image on top of text, instead of left of text */
+	.vertical = 0
 };
 
 /* string to be replaced by truncated text, should be a single unicode character */
