@@ -10,6 +10,8 @@ xnotify \- popup a notification on the screen
 .IR button ]
 .RB [ \-g
 .IR geometry ]
+.RB [ \-h
+.IR height ]
 .RB [ \-m
 .IR monitor ]
 .RB [ \-s
@@ -69,6 +71,9 @@ and
 .B "-g -10+10"
 is the same as
 .BR "-g 0x0-10+10" .
+.TP
+.BI "\-h " height
+Maximum height (in pixels) of a notification window.
 .TP
 .BI "\-m " monitor
 Makes xnotify be displayed on the specified monitor.
@@ -177,6 +182,9 @@ for more information.
 .TP
 .B xnotify.borderWidth
 The size in pixels of the border around a notification.
+.TP
+.B xnotify.maxHeight
+The maximum height of a notification window in pixels.
 .TP
 .B xnotify.gap
 The gap between notifications.
