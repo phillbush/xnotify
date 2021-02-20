@@ -44,7 +44,7 @@ volatile sig_atomic_t usrflag;  /* 1 if for SIGUSR1, 2 for SIGUSR2, 0 otherwise 
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-b button] [-g geometry] [-m monitor] [-s seconds] [-y height]\n");
+	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-b button] [-g geometry] [-h height] [-m monitor] [-s seconds]\n");
 	exit(1);
 }
 
@@ -116,7 +116,7 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:b:g:m:y:os:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:b:g:h:m:os:")) != -1) {
 		switch (ch) {
 		case 'G':
 			config.gravityspec = optarg;
@@ -147,15 +147,15 @@ getoptions(int argc, char *argv[])
 		case 'g':
 			config.geometryspec = optarg;
 			break;
+		case 'h':
+			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
+				config.max_height = n;
+			break;
 		case 'm':
 			mon.num = atoi(optarg);
 			break;
 		case 'o':
 			oflag = 1;
-			break;
-		case 'y':
-			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
-				config.max_height = n;
 			break;
 		case 's':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
