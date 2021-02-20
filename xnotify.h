@@ -1,6 +1,6 @@
 /* macros */
 #define DEFWIDTH            350     /* default width of a notification */
-#define MAXLINES            10      /* maximum number of unwrapped lines */
+#define MAXLINES            128     /* maximum number of unwrapped lines */
 #define MIN(x,y)            ((x)<(y)?(x):(y))
 #define MAX(x,y)            ((x)>(y)?(x):(y))
 #define BETWEEN(x, a, b)    ((a) <= (x) && (x) <= (b))
