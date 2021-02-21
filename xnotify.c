@@ -449,12 +449,11 @@ setqueue(void)
 	/* set geometry of notification queue */
 	parsegravityspec(&queue->gravity, &queue->direction);
 	parsegeometryspec(&queue->x, &queue->y, &queue->w, &queue->h);
+	if (config.image_pixels < 0)
+		config.image_pixels = 0;
 	minw = ellipsis.width + config.image_pixels + config.padding_pixels * 3 + 1;
 	if (queue->w < minw)
 		queue->w = minw;
-
-	if (config.image_pixels <= 0)
-		config.image_pixels = 0;
 
 	return queue;
 }
