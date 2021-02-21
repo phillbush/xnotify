@@ -44,7 +44,7 @@ volatile sig_atomic_t usrflag;  /* 1 if for SIGUSR1, 2 for SIGUSR2, 0 otherwise 
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-b button] [-g geometry] [-h height] [-m monitor] [-s seconds]\n");
+	(void)fprintf(stderr, "usage: xnotify [-o] [-v] [-G gravity] [-b button] [-g geometry] [-h height] [-m monitor] [-s seconds]\n");
 	exit(1);
 }
 
@@ -91,6 +91,10 @@ getresources(void)
 	if (XrmGetResource(xdb, "xnotify.maxHeight", "*", &type, &xval) == True)
 		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
 			config.max_height = n;
+	if (XrmGetResource(xdb, "xnotify.vertical", "*", &type, &xval) == True)
+		config.vertical = (strcasecmp(xval.addr, "true") == 0 ||
+		                strcasecmp(xval.addr, "on") == 0 ||
+		                strcasecmp(xval.addr, "1") == 0);
 	if (XrmGetResource(xdb, "xnotify.shrink", "*", &type, &xval) == True)
 		config.shrink = (strcasecmp(xval.addr, "true") == 0 ||
 		                strcasecmp(xval.addr, "on") == 0 ||
@@ -116,7 +120,7 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:b:g:h:m:os:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:b:g:h:m:os:v")) != -1) {
 		switch (ch) {
 		case 'G':
 			config.gravityspec = optarg;
@@ -160,6 +164,9 @@ getoptions(int argc, char *argv[])
 		case 's':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
 				config.sec = n;
+			break;
+		case 'v':
+			config.vertical = 1;
 			break;
 		default:
 			usage();
@@ -814,7 +821,11 @@ drawitem(struct Item *item)
 	texth -= config.leading_pixels;
 
 	/* resize notification window based on its contents */
-	newh = MAX(imageh, texth) + 2 * config.padding_pixels;
+	if(config.vertical) {
+		newh = imageh + texth + 3 * config.padding_pixels;
+	} else {
+		newh = MAX(imageh, texth) + 2 * config.padding_pixels;
+	}
 	item->h = MAX(item->h, newh);
 	XResizeWindow(dpy, item->win, item->w, item->h);
 
@@ -826,12 +837,19 @@ drawitem(struct Item *item)
 		XCopyArea(dpy, imagepixmap, item->pixmap, dc.gc, 0, 0,
 		          config.image_pixels, config.image_pixels,
 		          config.padding_pixels,
-		          (item->h - config.image_pixels) / 2);
+		          config.vertical
+				? config.padding_pixels
+				: (item->h - config.image_pixels) / 2);
 		XFreePixmap(dpy, imagepixmap);
 	}
 	XCopyArea(dpy, textpixmap, item->pixmap, dc.gc, 0, 0, item->textw, texth,
-		  config.padding_pixels + (imagew > 0 ? imagew + config.padding_pixels : 0),
-		  (item->h - texth) / 2);
+		  config.vertical
+		  ? config.padding_pixels
+		  : config.padding_pixels + (imagew > 0 ? imagew + config.padding_pixels : 0),
+		  config.vertical && item->image
+		  ? config.image_pixels + 2 * config.padding_pixels
+		  : (item->h - texth) / 2);
+
 	XFreePixmap(dpy, textpixmap);
 	XftDrawDestroy(draw);
 }
@@ -909,9 +927,17 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 		}
 		maxw += ellipsis.width;
 		if (item->image) {
-			item->textw = queue->w - config.image_pixels - config.padding_pixels * 3;
+			if(config.vertical) {
+				item->textw = queue->w - config.padding_pixels * 2;
+			} else {
+				item->textw = queue->w - config.image_pixels - config.padding_pixels * 3;
+			}
 			item->textw = MIN(maxw, item->textw);
-			item->w = item->textw + config.image_pixels + config.padding_pixels * 3;
+			if(config.vertical) {
+				item->w = MAX(item->textw, config.image_pixels) + config.padding_pixels * 2;
+			} else {
+				item->w = item->textw + config.image_pixels + config.padding_pixels * 3;
+			}
 		} else {
 			item->textw = queue->w - config.padding_pixels * 2;
 			item->textw = MIN(maxw, item->textw);
@@ -919,7 +945,7 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 		}
 	} else {
 		item->w = queue->w;
-		if (item->image) {
+		if (item->image && !config.vertical) {
 			item->textw = queue->w - config.image_pixels - config.padding_pixels * 3;
 		} else {
 			item->textw = queue->w - config.padding_pixels * 2;

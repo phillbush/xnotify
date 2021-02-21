@@ -16,6 +16,7 @@ xnotify \- popup a notification on the screen
 .IR monitor ]
 .RB [ \-s
 .IR seconds ]
+.RB [ \-v ]
 .SH DESCRIPTION
 .B xnotify
 is a notification launcher for X,
@@ -91,6 +92,9 @@ Specify the time, in seconds,
 for a notification to be displayed before it is removed from screen.
 Without this option, the default of 10 seconds is used.
 If this option is set to 0 (zero), the notification is displayed indefinitely until manually closed.
+.TP
+.B \-v
+Display image above text, instead of to the left of text.
 .PP
 Each line read from stdin specify a notification and has the following format:
 .IP
