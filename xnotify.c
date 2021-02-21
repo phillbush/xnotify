@@ -437,6 +437,7 @@ static struct Queue *
 setqueue(void)
 {
 	struct Queue *queue;
+	int minw;
 
 	if ((queue = malloc(sizeof *queue)) == NULL)
 		err(1, "malloc");
@@ -448,8 +449,9 @@ setqueue(void)
 	/* set geometry of notification queue */
 	parsegravityspec(&queue->gravity, &queue->direction);
 	parsegeometryspec(&queue->x, &queue->y, &queue->w, &queue->h);
-	if (queue->w <= ellipsis.width + config.image_pixels + config.padding_pixels * 3)
-		queue->w = DEFWIDTH;
+	minw = ellipsis.width + config.image_pixels + config.padding_pixels * 3 + 1;
+	if (queue->w < minw)
+		queue->w = minw;
 
 	if (config.image_pixels <= 0)
 		config.image_pixels = 0;
