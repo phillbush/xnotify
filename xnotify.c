@@ -479,12 +479,11 @@ copypixmap(struct Item *item)
 
 /* load and scale image */
 static Imlib_Image
-loadimage(const char *file, int *width_ret, int *height_ret)
+loadimage(const char *file)
 {
 	Imlib_Image image;
 	Imlib_Load_Error errcode;
 	const char *errstr;
-	int width, height;
 
 	image = imlib_load_image_with_error_return(file, &errcode);
 	if (*file == '\0') {
@@ -529,23 +528,8 @@ loadimage(const char *file, int *width_ret, int *height_ret)
 		warnx("could not load image (%s): %s", errstr, file);
 		return NULL;
 	}
-
 	imlib_context_set_image(image);
 	imlib_image_set_changes_on_disk();
-
-	width = imlib_image_get_width();
-	height = imlib_image_get_height();
-
-	if (width > height) {
-		*width_ret = config.image_pixels;
-		*height_ret = (height * config.image_pixels) / width;
-	} else {
-		*width_ret = (width * config.image_pixels) / height;
-		*height_ret = config.image_pixels;
-	}
-
-	image = imlib_create_cropped_scaled_image(0, 0, width, height, *width_ret, *height_ret);
-
 	return image;
 }
 
@@ -696,6 +680,8 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 	int wordwidth = 0;
 	int texty;
 
+	if (*s == NULL)
+		return 0;
 	check = text = *s;
 	while (*text) {
 		/* wrap text if next word doesn't fit in w */
@@ -722,7 +708,7 @@ drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w,
 		len = next - text;
 		XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)text, len, &ext);
 		t = text;
-		if (w && textwidth + ext.xOff + ellipsis.width > w) {
+		if (w && textwidth + ext.xOff + (*text && *(text+1) ? ellipsis.width : 0) > w) {
 			t = ellipsis.s;
 			len = ellipsis.len;
 			currfont = ellipsis.font;
@@ -757,64 +743,77 @@ static void
 drawitem(struct Item *item)
 {
 	Drawable textpixmap, imagepixmap;
+	Imlib_Image image = NULL;
 	struct Fonts *fnt;
 	const char *text;
 	XftDraw *draw;
 	int xaligned;
 	int i, x, newh;
-	int texth, imageh, imagew;
+	int texth, imgh, imgw;
+	int origimgw, origimgh;
 
 	item->pixmap = XCreatePixmap(dpy, item->win, item->w, config.max_height, depth);
 	XSetForeground(dpy, dc.gc, item->background.pixel);
 	XFillRectangle(dpy, item->pixmap, dc.gc, 0, 0, item->w, config.max_height);
 
 	/* draw image */
-	imagew = imageh = 0;
-	if (item->image) {
-		imagepixmap = XCreatePixmap(dpy, item->pixmap, config.image_pixels, config.image_pixels, depth);
-		XFillRectangle(dpy, imagepixmap, dc.gc, 0, 0, config.image_pixels, config.image_pixels);
+	imgw = imgh = 0;
+	if (item->image && item->imgw > 0) {
+		imagepixmap = XCreatePixmap(dpy, item->pixmap, item->imgw, item->imgw, depth);
+		XFillRectangle(dpy, imagepixmap, dc.gc, 0, 0, item->imgw, item->imgw);
 		imlib_context_set_image(item->image);
 		imlib_context_set_drawable(imagepixmap);
-		imlib_render_image_on_drawable((config.image_pixels - item->imgw) / 2,
-		                               (config.image_pixels - item->imgh) / 2);
+		origimgw = imlib_image_get_width();
+		origimgh = imlib_image_get_height();
+		if (imgw > imgh) {
+			imgw = item->imgw;
+			imgh = (origimgh * item->imgw) / origimgw;
+		} else {
+			imgw = (origimgw * item->imgw) / origimgh;
+			imgh = item->imgw;
+		}
+		image = imlib_create_cropped_scaled_image(0, 0, origimgw, origimgh, imgw, imgh);
 		imlib_free_image();
-		imageh = item->imgh;
-		imagew = config.image_pixels;
+		imlib_context_set_image(image);
+		imlib_render_image_on_drawable((item->imgw - imgw) / 2, (item->imgw - imgh) / 2);
+		imlib_free_image();
 	}
 
 	/* draw text */
 	texth = 0;
-	textpixmap = XCreatePixmap(dpy, item->pixmap, item->textw, config.max_height, depth);
-	XFillRectangle(dpy, textpixmap, dc.gc, 0, 0, item->textw, config.max_height);
-	draw = XftDrawCreate(dpy, textpixmap, visual, colormap);
-	for (i = 0; i < item->nlines; i++) {
-		fnt = (i == 0 && item->nlines > 1) ? &titlefnt : &bodyfnt;
-		text = item->line[i];
-		while (texth <= config.max_height &&
-		      (xaligned = drawtext(fnt, NULL, NULL, 0, 0, item->textw, &text)) > 0) {
-			switch (config.alignment) {
-			case LeftAlignment:
-				x = 0;
-				break;
-			case CenterAlignment:
-				xaligned = (item->textw - xaligned) / 2;
-				x = MAX(0, xaligned);
-				break;
-			case RightAlignment:
-				xaligned = item->textw - xaligned;
-				x = MAX(0, xaligned);
-				break;
-			default:
-				break;
+	if (item->textw > 0) {
+		textpixmap = XCreatePixmap(dpy, item->pixmap, item->textw, config.max_height, depth);
+		XFillRectangle(dpy, textpixmap, dc.gc, 0, 0, item->textw, config.max_height);
+		draw = XftDrawCreate(dpy, textpixmap, visual, colormap);
+		for (i = 0; i < item->nlines; i++) {
+			fnt = (i == 0 && item->nlines > 1) ? &titlefnt : &bodyfnt;
+			text = item->line[i];
+			while (texth <= config.max_height &&
+		      	      (xaligned = drawtext(fnt, NULL, NULL, 0, 0, item->textw, &text)) > 0) {
+				switch (config.alignment) {
+				case LeftAlignment:
+					x = 0;
+					break;
+				case CenterAlignment:
+					xaligned = (item->textw - xaligned) / 2;
+					x = MAX(0, xaligned);
+					break;
+				case RightAlignment:
+					xaligned = item->textw - xaligned;
+					x = MAX(0, xaligned);
+					break;
+				default:
+					break;
+				}
+				drawtext(fnt, draw, &item->foreground, x, texth, item->textw, &text);
+				texth += fnt->texth + config.leading_pixels;
 			}
-			drawtext(fnt, draw, &item->foreground, x, texth, item->textw, &text);
-			texth += fnt->texth + config.leading_pixels;
 		}
+		texth -= config.leading_pixels;
 	}
-	texth -= config.leading_pixels;
 
 	/* resize notification window based on its contents */
-	newh = MAX(imageh, texth) + 2 * config.padding_pixels;
+	newh = MAX(imgh, texth) + 2 * config.padding_pixels;
 	item->h = MAX(item->h, newh);
 	XResizeWindow(dpy, item->win, item->w, item->h);
 
@@ -822,18 +821,17 @@ drawitem(struct Item *item)
 	XSetWindowBorder(dpy, item->win, item->border.pixel);
 
 	/* copy image and text pixmaps to notification pixmap */
-	if (item->image) {
-		XCopyArea(dpy, imagepixmap, item->pixmap, dc.gc, 0, 0,
-		          config.image_pixels, config.image_pixels,
-		          config.padding_pixels,
-		          (item->h - config.image_pixels) / 2);
+	if (image) {
+		XCopyArea(dpy, imagepixmap, item->pixmap, dc.gc, 0, 0, item->imgw, item->imgw, config.padding_pixels, (item->h - item->imgw) / 2);
 		XFreePixmap(dpy, imagepixmap);
 	}
-	XCopyArea(dpy, textpixmap, item->pixmap, dc.gc, 0, 0, item->textw, texth,
-		  config.padding_pixels + (imagew > 0 ? imagew + config.padding_pixels : 0),
-		  (item->h - texth) / 2);
-	XFreePixmap(dpy, textpixmap);
-	XftDrawDestroy(draw);
+	if (item->textw > 0) {
+		XCopyArea(dpy, textpixmap, item->pixmap, dc.gc, 0, 0, item->textw, texth,
+		          config.padding_pixels + (item->imgw > 0 ? item->imgw + config.padding_pixels : 0),
+		          (item->h - texth) / 2);
+		XFreePixmap(dpy, textpixmap);
+		XftDrawDestroy(draw);
+	}
 }
 
 /* reset time of item */
@@ -862,12 +860,12 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	const char *text;
 	struct Item *item;
 	int w, i;
-	int maxw;
+	int maxw = 0;
 
 	if ((item = malloc(sizeof *item)) == NULL)
 		err(1, "malloc");
 	item->next = NULL;
-	item->image = (itemspec->file) ? loadimage(itemspec->file, &item->imgw, &item->imgh) : NULL;
+	item->image = (itemspec->file) ? loadimage(itemspec->file) : NULL;
 	item->tag = (itemspec->tag) ? estrdup(itemspec->tag) : NULL;
 	item->cmd = (itemspec->cmd) ? estrdup(itemspec->cmd) : NULL;
 	item->sec = itemspec->sec;
@@ -879,7 +877,7 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	queue->tail = item;
 
 	/* allocate texts */
-	item->line[0] = estrdup(itemspec->firstline);
+	item->line[0] = (itemspec->firstline) ? estrdup(itemspec->firstline) : NULL;
 	text = strtok(itemspec->otherlines, "\t\n");
 	for (i = 1; i < MAXLINES && text != NULL; i++) {
 		item->line[i] = estrdup(text);
@@ -896,18 +894,20 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 		item->border = dc.border;
 
 	/* compute notification width and height */
+	item->imgw = config.image_pixels;
 	item->h = queue->h;
-	if (config.shrink) {
-		maxw = 0;
-		for (i = 0; i < item->nlines; i++) {
-			text = item->line[i];
-			fnt = (i == 0 && item->nlines > 1) ? &titlefnt : &bodyfnt;
-			w = drawtext(fnt, NULL, NULL, 0, 0, 0, &text);
-			if (w > maxw) {
-				maxw = w;
-			}
+	for (i = 0; i < item->nlines; i++) {
+		text = item->line[i];
+		fnt = (i == 0 && item->nlines > 1) ? &titlefnt : &bodyfnt;
+		w = drawtext(fnt, NULL, NULL, 0, 0, 0, &text);
+		if (w > maxw) {
+			maxw = w;
 		}
+	}
+	if (maxw) {
 		maxw += ellipsis.width;
+	}
+	if (config.shrink) {
 		if (item->image) {
 			item->textw = queue->w - config.image_pixels - config.padding_pixels * 3;
 			item->textw = MIN(maxw, item->textw);
@@ -920,7 +920,11 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	} else {
 		item->w = queue->w;
 		if (item->image) {
-			item->textw = queue->w - config.image_pixels - config.padding_pixels * 3;
+			item->textw = queue->w - config.image_pixels - config.padding_pixels * (2 + (item->line[0] ? 1 : 0));
+			if (!config.image_pixels) {
+				item->textw = MIN(item->textw, maxw);
+			}
+			item->imgw = queue->w - item->textw - config.padding_pixels * (2 + (item->line[0] ? 1 : 0));
 		} else {
 			item->textw = queue->w - config.padding_pixels * 2;
 		}
@@ -1049,7 +1053,7 @@ parseline(char *s)
 		while (*itemspec->otherlines == '\t')
 			itemspec->otherlines++;
 
-	if (!itemspec->firstline)
+	if (!itemspec->firstline && !itemspec->file)
 		return NULL;
 
 	return itemspec;

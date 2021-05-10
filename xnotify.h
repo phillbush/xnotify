@@ -94,7 +94,7 @@ struct Item {
 	int sec;
 
 	int w, h;
-	int imgw, imgh;
+	int imgw;
 	int textw;
 
 	XftColor background;
