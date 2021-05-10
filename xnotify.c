@@ -12,6 +12,7 @@
 #include <X11/Xatom.h>
 #include <X11/Xresource.h>
 #include <X11/Xft/Xft.h>
+#include <X11/keysymdef.h>
 #include <X11/extensions/Xinerama.h>
 #include <Imlib2.h>
 #include "xnotify.h"
@@ -35,6 +36,7 @@ static struct Ellipsis ellipsis;
 
 /* flags */
 static int oflag = 0;   /* whether only one notification must exist at a time */
+static int kflag = 0;   /* whether to grab keyboard input */
 volatile sig_atomic_t usrflag;  /* 1 if for SIGUSR1, 2 for SIGUSR2, 0 otherwise */
 
 /* include configuration structure */
@@ -44,7 +46,7 @@ volatile sig_atomic_t usrflag;  /* 1 if for SIGUSR1, 2 for SIGUSR2, 0 otherwise 
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-b button] [-g geometry] [-h height] [-m monitor] [-s seconds]\n");
+	(void)fprintf(stderr, "usage: xnotify [-o] [-k] [-G gravity] [-b button] [-g geometry] [-h height] [-m monitor] [-s seconds]\n");
 	exit(1);
 }
 
@@ -116,7 +118,7 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:b:g:h:m:os:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:b:g:h:km:os:")) != -1) {
 		switch (ch) {
 		case 'G':
 			config.gravityspec = optarg;
@@ -156,6 +158,10 @@ getoptions(int argc, char *argv[])
 			break;
 		case 'o':
 			oflag = 1;
+			break;
+		case 'k':
+			oflag = 1;
+			kflag = 1;
 			break;
 		case 's':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
@@ -948,6 +954,7 @@ delitem(struct Queue *queue, struct Item *item)
 	for (i = 0; i < item->nlines; i++)
 		free(item->line[i]);
 	XFreePixmap(dpy, item->pixmap);
+	if(kflag) XUngrabKeyboard(dpy, CurrentTime);
 	XDestroyWindow(dpy, item->win);
 	if (item->prev)
 		item->prev->next = item->next;
@@ -1069,8 +1076,10 @@ readevent(struct Queue *queue)
 	while (XPending(dpy) && !XNextEvent(dpy, &ev)) {
 		switch (ev.type) {
 		case Expose:
-			if (ev.xexpose.count == 0 && (item = getitem(queue, ev.xexpose.window)) != NULL)
+			if (ev.xexpose.count == 0 && (item = getitem(queue, ev.xexpose.window)) != NULL) {
 				copypixmap(item);
+				if(kflag) XGrabKeyboard(dpy, ev.xexpose.window, False, GrabModeAsync, GrabModeAsync, CurrentTime);
+			}
 			break;
 		case ButtonPress:
 			if ((item = getitem(queue, ev.xbutton.window)) == NULL)
@@ -1078,6 +1087,14 @@ readevent(struct Queue *queue)
 			if ((ev.xbutton.button == config.actionbutton) && item->cmd)
 				cmditem(item);
 			delitem(queue, item);
+			break;
+		case KeyPress:
+			if ((item = getitem(queue, ev.xkey.window)) == NULL)
+				break;
+			if ((XLookupKeysym(&ev.xkey, 0) == XK_Escape) ) {
+				if (item->cmd) cmditem(item);
+				delitem(queue, item);
+			}
 			break;
 		case MotionNotify:
 			if ((item = getitem(queue, ev.xmotion.window)) != NULL)
