@@ -827,7 +827,7 @@ drawitem(struct Item *item)
 	}
 	if (item->textw > 0) {
 		XCopyArea(dpy, textpixmap, item->pixmap, dc.gc, 0, 0, item->textw, texth,
-		          config.padding_pixels + (item->imgw > 0 ? item->imgw + config.padding_pixels : 0),
+		          config.padding_pixels + (image && item->imgw > 0 ? item->imgw + config.padding_pixels : 0),
 		          (item->h - texth) / 2);
 		XFreePixmap(dpy, textpixmap);
 		XftDrawDestroy(draw);
