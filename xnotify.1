@@ -3,7 +3,7 @@
 xnotify \- popup a notification on the screen
 .SH SYNOPSIS
 .B xnotify
-.RB [ \-o ]
+.RB [ \-ow ]
 .RB [ \-G
 .IR gravity ]
 .RB [ \-b
@@ -91,6 +91,9 @@ Specify the time, in seconds,
 for a notification to be displayed before it is removed from screen.
 Without this option, the default of 10 seconds is used.
 If this option is set to 0 (zero), the notification is displayed indefinitely until manually closed.
+.TP
+.B \-w
+Let the window manager control notification windows.
 .PP
 Each line read from stdin specify a notification and has the following format:
 .IP

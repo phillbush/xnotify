@@ -34,7 +34,8 @@ static struct Fonts titlefnt, bodyfnt;
 static struct Ellipsis ellipsis;
 
 /* flags */
-static int oflag = 0;   /* whether only one notification must exist at a time */
+static int oflag;       /* whether only one notification must exist at a time */
+static int wflag;       /* whether to let window manager manage notifications */
 volatile sig_atomic_t usrflag;  /* 1 if for SIGUSR1, 2 for SIGUSR2, 0 otherwise */
 
 /* include configuration structure */
@@ -44,7 +45,7 @@ volatile sig_atomic_t usrflag;  /* 1 if for SIGUSR1, 2 for SIGUSR2, 0 otherwise 
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-o] [-G gravity] [-b button] [-g geometry] [-h height] [-m monitor] [-s seconds]\n");
+	(void)fprintf(stderr, "usage: xnotify [-ow] [-G gravity] [-b button] [-g geometry] [-h height] [-m monitor] [-s seconds]\n");
 	exit(1);
 }
 
@@ -116,7 +117,7 @@ getoptions(int argc, char *argv[])
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:b:g:h:m:os:")) != -1) {
+	while ((ch = getopt(argc, argv, "G:b:g:h:m:os:w")) != -1) {
 		switch (ch) {
 		case 'G':
 			config.gravityspec = optarg;
@@ -160,6 +161,9 @@ getoptions(int argc, char *argv[])
 		case 's':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
 				config.sec = n;
+			break;
+		case 'w':
+			wflag = 1;
 			break;
 		default:
 			usage();
@@ -540,7 +544,7 @@ createwindow(struct Item *item)
 	XClassHint classhint = {"XNotify", "XNotify"};
 	XSetWindowAttributes swa;
 
-	swa.override_redirect = True;
+	swa.override_redirect = (wflag ? False : True);
 	swa.background_pixel = dc.background.pixel;
 	swa.border_pixel = dc.border.pixel;
 	swa.save_under = True;  /* pop-up windows should save_under */
