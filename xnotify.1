@@ -315,9 +315,7 @@ For
 .B xnotify
 to read dbus notifications,
 its stdin must be fed with the output of
-.IR tiramisu (1)
-parsed by
-.IR jq (1).
+.IR tiramisu (1).
 The following line makes
 .IR tiramisu (1)
 send dbus notifications to
@@ -328,7 +326,7 @@ after the line calling
 .BR xnotify .
 .IP
 .EX
-tiramisu -j | jq --raw-output --unbuffered '.summary + "\et" + .body' > $XNOTIFY_FIFO &
+tiramisu -o "$(printf '#summary\t#body\n')" > $XNOTIFY_FIFO &
 .EE
 .SH SEE ALSO
 .IR tiramisu (1),
