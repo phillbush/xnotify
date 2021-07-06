@@ -970,6 +970,7 @@ static void
 cmditem(struct Item *item)
 {
 	printf("%s\n", item->cmd);
+	fflush(stdout);
 }
 
 /* check the type of option given to a notification item */
