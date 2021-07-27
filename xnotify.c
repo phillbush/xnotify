@@ -752,7 +752,7 @@ drawitem(struct Item *item)
 	const char *text;
 	XftDraw *draw;
 	int xaligned;
-	int i, x, newh;
+	int bar, i, x, newh;
 	int texth, imgh, imgw;
 	int origimgw, origimgh;
 
@@ -816,6 +816,15 @@ drawitem(struct Item *item)
 		texth -= config.leading_pixels;
 	}
 
+	/* draw bar */
+	if (item->bar > 0) {
+		bar = (item->textw * item->bar) / 100;
+		bar = MIN(bar, item->textw);
+		XSetForeground(dpy, dc.gc, item->foreground.pixel);
+		XFillRectangle(dpy, textpixmap, dc.gc, 0, texth, bar, bodyfnt.texth);
+		texth += bodyfnt.texth;
+	}
+
 	/* resize notification window based on its contents */
 	newh = MAX(imgh, texth) + 2 * config.padding_pixels;
 	item->h = MAX(item->h, newh);
@@ -873,6 +882,7 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	item->tag = (itemspec->tag) ? estrdup(itemspec->tag) : NULL;
 	item->cmd = (itemspec->cmd) ? estrdup(itemspec->cmd) : NULL;
 	item->sec = itemspec->sec;
+	item->bar = itemspec->bar;
 	if (!queue->head)
 		queue->head = item;
 	else
@@ -991,6 +1001,8 @@ optiontype(const char *s)
 		return CMD;
 	if (strncmp(s, "SEC:", 4) == 0)
 		return SEC;
+	if (strncmp(s, "BAR:", 4) == 0)
+		return BAR;
 	return UNKNOWN;
 }
 
@@ -1013,6 +1025,7 @@ parseline(char *s)
 	itemspec->border = NULL;
 	itemspec->tag = NULL;
 	itemspec->cmd = NULL;
+	itemspec->bar = -1;
 	itemspec->sec = config.sec;
 	itemspec->firstline = strtok(s, "\t\n");
 	while (itemspec->firstline && (option = optiontype(itemspec->firstline)) != UNKNOWN) {
@@ -1039,6 +1052,14 @@ parseline(char *s)
 			break;
 		case CMD:
 			itemspec->cmd = itemspec->firstline + 4;
+			itemspec->firstline = strtok(NULL, "\t\n");
+			break;
+		case BAR:
+			t = itemspec->firstline + 4;
+			if (!getnum(&t, &n) && n >= 0 && n <= 100)
+				itemspec->bar = n;
+			else
+				itemspec->bar = -1;
 			itemspec->firstline = strtok(NULL, "\t\n");
 			break;
 		case SEC:
@@ -1294,6 +1315,7 @@ main(int argc, char *argv[])
 						cleanitems(queue, itemspec->tag);
 					}
 					additem(queue, itemspec);
+					free(itemspec);
 				}
 			}
 			if (pfd[1].revents & POLLIN) {
