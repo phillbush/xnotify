@@ -107,6 +107,10 @@ getresources(void)
 			config.alignment = LeftAlignment;
 		else if (strcasecmp(xval.addr, "right") == 0)
 			config.alignment = RightAlignment;
+	if (XrmGetResource(xdb, "xnotify.alignTop", "*", &type, &xval) == True)
+		config.align_top = (strcasecmp(xval.addr, "true") == 0 ||
+		                strcasecmp(xval.addr, "on") == 0 ||
+		                strcasecmp(xval.addr, "1") == 0);
 	}
 }
 
@@ -841,7 +845,7 @@ drawitem(struct Item *item)
 	if (item->textw > 0) {
 		XCopyArea(dpy, textpixmap, item->pixmap, dc.gc, 0, 0, item->textw, texth,
 		          config.padding_pixels + (image && item->imgw > 0 ? item->imgw + config.padding_pixels : 0),
-		          (item->h - texth) / 2);
+		          config.align_top ? config.padding_pixels : ((item->h - texth) / 2));
 		XFreePixmap(dpy, textpixmap);
 		XftDrawDestroy(draw);
 	}

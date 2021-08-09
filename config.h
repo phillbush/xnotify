@@ -32,6 +32,9 @@ static struct Config config = {
 	/* time, in seconds, for a notification to stay alive */
 	.sec = 10,
 
+	/* set to nonzero to vertically align text to top */
+	.align_top = 1,
+
 	/* mouse button that makes xnotify prints a notification's CMD: */
 	.actionbutton = Button3,
 };
