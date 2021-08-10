@@ -41,6 +41,7 @@ struct Config {
 	int wrap;
 
 	int sec;
+	int align_top;
 
 	unsigned int actionbutton;
 };
