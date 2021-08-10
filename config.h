@@ -33,7 +33,7 @@ static struct Config config = {
 	.sec = 10,
 
 	/* set to nonzero to vertically align text to top */
-	.align_top = 1,
+	.align_top = 0,
 
 	/* mouse button that makes xnotify prints a notification's CMD: */
 	.actionbutton = Button3,
