@@ -16,6 +16,14 @@
 #include <Imlib2.h>
 #include "xnotify.h"
 
+/* user signal flag */
+enum {
+	SIGNAL_NONE    = 0,
+	SIGNAL_KILL    = 1,
+	SIGNAL_CMD     = 2,
+	SIGNAL_KILLALL = 3,
+};
+
 /* X stuff */
 static Display *dpy;
 static Colormap colormap;
@@ -36,7 +44,7 @@ static struct Ellipsis ellipsis;
 /* flags */
 static int oflag;       /* whether only one notification must exist at a time */
 static int wflag;       /* whether to let window manager manage notifications */
-volatile sig_atomic_t usrflag;  /* 1 if for SIGUSR1, 2 for SIGUSR2, 0 otherwise */
+volatile sig_atomic_t sigflag;
 
 /* include configuration structure */
 #include "config.h"
@@ -352,7 +360,7 @@ static void
 sigusr1handler(int sig)
 {
 	(void)sig;
-	usrflag = 1;
+	sigflag = SIGNAL_KILL;
 }
 
 /* signal SIGUSR2 handler (print cmd of first notification) */
@@ -360,7 +368,15 @@ static void
 sigusr2handler(int sig)
 {
 	(void)sig;
-	usrflag = 2;
+	sigflag = SIGNAL_CMD;
+}
+
+/* signal SIGHUP handler (print cmd of first notification) */
+static void
+sighuphandler(int sig)
+{
+	(void)sig;
+	sigflag = SIGNAL_KILLALL;
 }
 
 /* init signal  */
@@ -379,6 +395,12 @@ initsignal(void)
 	sa.sa_flags = 0;
 	sigemptyset(&sa.sa_mask);
 	if (sigaction(SIGUSR2, &sa, NULL) == -1)
+		err(1, "sigaction");
+
+	sa.sa_handler = sighuphandler;
+	sa.sa_flags = 0;
+	sigemptyset(&sa.sa_mask);
+	if (sigaction(SIGHUP, &sa, NULL) == -1)
 		err(1, "sigaction");
 }
 
@@ -983,7 +1005,8 @@ delitem(struct Queue *queue, struct Item *item)
 static void
 cmditem(struct Item *item)
 {
-	printf("%s\n", item->cmd);
+	if (item->cmd != NULL)
+		printf("%s\n", item->cmd);
 	fflush(stdout);
 }
 
@@ -1303,6 +1326,7 @@ main(int argc, char *argv[])
 	pfd[0].events = pfd[1].events = POLLIN;
 
 	/* run main loop */
+	sigflag = SIGNAL_NONE;
 	do {
 		if (poll(pfd, 2, timeout) > 0) {
 			if (pfd[0].revents & POLLHUP) {
@@ -1326,11 +1350,19 @@ main(int argc, char *argv[])
 				readevent(queue);
 			}
 		}
-		if (usrflag) {
-			if (usrflag > 1 && queue->head)
+		if (sigflag != SIGNAL_NONE) {
+			switch (sigflag) {
+			case SIGNAL_CMD:
 				cmditem(queue->head);
-			cleanitems(queue, NULL);
-			usrflag = 0;
+				/* FALLTHROUGH */
+			case SIGNAL_KILL:
+				delitem(queue, queue->head);
+				break;
+			case SIGNAL_KILLALL:
+				cleanitems(queue, NULL);
+				break;
+			}
+			sigflag = SIGNAL_NONE;
 		}
 		timeitems(queue);
 		if (queue->change)
