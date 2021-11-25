@@ -240,11 +240,14 @@ lines will be truncated.
 .B xnotify
 respond to signals sent to it.
 .TP
-.B SIGUSR1
+.B SIGHUP
 Close all notifications.
 .TP
+.B SIGUSR1
+Close the first notification.
+.TP
 .B SIGUSR2
-Print the CMD of the first notification and then close all notifications.
+Print the CMD of the first notification and then close it.
 .TP
 .B SIGSTOP
 Stop
@@ -258,7 +261,7 @@ signal.
 This signal is useful to be sent when a window is fullscreen,
 so xnotify will not annoy with notifications on top of the fullscreen window.
 A
-.B SIGUSR1
+.B SIGHUP
 signal must be sent before a
 .B SIGSTOP
 in order to
