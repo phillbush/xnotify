@@ -1297,6 +1297,9 @@ main(int argc, char *argv[])
 	if (fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK) == -1)
 		err(1, "could not set status flags for stdin");
 
+	/* disable buffering */
+	setbuf(stdin, NULL);
+
 	/* prepare the structure for poll(2) */
 	pfd[0].fd = STDIN_FILENO;
 	pfd[1].fd = xfd;
