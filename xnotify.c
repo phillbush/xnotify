@@ -1353,10 +1353,12 @@ main(int argc, char *argv[])
 		if (sigflag != SIGNAL_NONE) {
 			switch (sigflag) {
 			case SIGNAL_CMD:
-				cmditem(queue->head);
+				if (queue->head != NULL)
+					cmditem(queue->head);
 				/* FALLTHROUGH */
 			case SIGNAL_KILL:
-				delitem(queue, queue->head);
+				if (queue->head != NULL)
+					delitem(queue, queue->head);
 				break;
 			case SIGNAL_KILLALL:
 				cleanitems(queue, NULL);
