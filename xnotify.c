@@ -68,9 +68,9 @@ getresources(void)
 	if (xrm == NULL || xdb == NULL)
 		return;
 
-	if (XrmGetResource(xdb, "xnotify.title.font", "*", &type, &xval) == True)
+	if (XrmGetResource(xdb, "xnotify.title.faceName", "*", &type, &xval) == True)
 		config.titlefont = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.body.font", "*", &type, &xval) == True)
+	if (XrmGetResource(xdb, "xnotify.body.faceName", "*", &type, &xval) == True)
 		config.bodyfont = xval.addr;
 	if (XrmGetResource(xdb, "xnotify.background", "*", &type, &xval) == True)
 		config.background_color = xval.addr;
@@ -349,8 +349,14 @@ parsefonts(struct Fonts *fnt, const char *s)
 		if (nfont == 0)
 			if ((fnt->pattern = FcNameParse((FcChar8 *)buf)) == NULL)
 				errx(1, "the first font in the cache must be loaded from a font string");
-		if ((fnt->fonts[nfont++] = XftFontOpenName(dpy, screen, buf)) == NULL)
-			errx(1, "cannot load font");
+		fnt->fonts[nfont] = XftFontOpenXlfd(dpy, screen, buf);
+		if (fnt->fonts[nfont] == NULL) {
+			fnt->fonts[nfont] = XftFontOpenName(dpy, screen, buf);
+			if (fnt->fonts[nfont] == NULL) {
+				errx(1, "could not open font: %s", buf);
+			}
+		}
+		nfont++;
 	}
 	fnt->texth = fnt->fonts[0]->height;
 }
@@ -891,7 +897,7 @@ estrdup(const char *s)
 	return t;
 }
 
-/* add item notification item and set its window and contents */
+/* add notification item and set its window and contents */
 static void
 additem(struct Queue *queue, struct Itemspec *itemspec)
 {
@@ -899,7 +905,6 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	const char *text;
 	struct Item *item;
 	int w, i;
-	int maxw = 0;
 
 	if ((item = malloc(sizeof *item)) == NULL)
 		err(1, "malloc");
@@ -940,21 +945,15 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 		text = item->line[i];
 		fnt = (i == 0 && item->nlines > 1) ? &titlefnt : &bodyfnt;
 		w = drawtext(fnt, NULL, NULL, 0, 0, 0, &text);
-		if (w > maxw) {
-			maxw = w;
-		}
-	}
-	if (maxw) {
-		maxw += ellipsis.width;
 	}
 	if (config.shrink) {
 		if (item->image) {
 			item->textw = queue->w - config.image_pixels - config.padding_pixels * 3;
-			item->textw = MIN(maxw, item->textw);
+			item->textw = MIN(w, item->textw);
 			item->w = item->textw + config.image_pixels + config.padding_pixels * 3;
 		} else {
 			item->textw = queue->w - config.padding_pixels * 2;
-			item->textw = MIN(maxw, item->textw);
+			item->textw = MIN(w, item->textw);
 			item->w = item->textw + config.padding_pixels * 2;
 		}
 	} else {
@@ -962,7 +961,7 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 		if (item->image) {
 			item->textw = queue->w - config.image_pixels - config.padding_pixels * (2 + (item->line[0] ? 1 : 0));
 			if (!config.image_pixels) {
-				item->textw = MIN(item->textw, maxw);
+				item->textw = MIN(item->textw, w);
 			}
 			item->imgw = queue->w - item->textw - config.padding_pixels * (2 + (item->line[0] ? 1 : 0));
 		} else {
