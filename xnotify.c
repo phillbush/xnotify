@@ -1278,6 +1278,11 @@ main(int argc, char *argv[])
 	int flags;              /* status flags for stdin */
 	int reading = 1;        /* set to 0 when stdin reaches EOF */
 
+	#ifdef __OpenBSD__
+	if (pledge("stdio rpath unix", NULL) < 0)
+		err(1, "pledge");
+	#endif
+
 	/* open connection to server and set X variables */
 	if ((dpy = XOpenDisplay(NULL)) == NULL)
 		errx(1, "could not open display");
