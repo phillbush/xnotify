@@ -1,29 +1,41 @@
-include config.mk
+PROG = xnotify
+OBJS = ${PROG:=.o}
+SRCS = ${OBJS:.o=.c}
 
-SRCS = ${PROG}.c
-OBJS = ${SRCS:.c=.o}
+PREFIX ?= /usr/local
+MANPREFIX ?= ${PREFIX}/share/man
+LOCALINC ?= /usr/local/include
+LOCALLIB ?= /usr/local/lib
+X11INC ?= /usr/X11R6/include
+X11LIB ?= /usr/X11R6/lib
+
+INCS = -I${LOCALINC} -I${X11INC} -I/usr/include/freetype2 -I${X11INC}/freetype2
+LIBS = -L${LOCALLIB} -L${X11LIB} -lfontconfig -lXft -lX11 -lXinerama -lImlib2
 
 all: ${PROG}
 
 ${PROG}: ${OBJS}
-	${CC} -o $@ ${OBJS} ${LDFLAGS}
+	${CC} -o $@ ${OBJS} ${LIBS} ${LDFLAGS}
 
-${PROG}.o: config.h ${PROG}.h
+${OBJS}: ${PROG:=.h} config.h
 
 .c.o:
-	${CC} ${CFLAGS} -c $<
+	${CC} ${INCS} ${CFLAGS} ${CPPFLAGS} -c $<
+
+tags: ${SRCS}
+	ctags ${SRCS}
 
 clean:
-	-rm ${OBJS} ${PROG}
+	rm -f ${OBJS} ${PROG} ${PROG:=.core} tags
 
 install: all
 	mkdir -p ${DESTDIR}${PREFIX}/bin
 	install -m 755 ${PROG} ${DESTDIR}${PREFIX}/bin/${PROG}
 	mkdir -p ${DESTDIR}${MANPREFIX}/man1
-	install -m 644 ${PROG}.1 ${DESTDIR}${MANPREFIX}/man1/${PROG}.1
+	install -m 644 ${PROG:=.1} ${DESTDIR}${MANPREFIX}/man1/${PROG:=.1}
 
 uninstall:
-	rm -f ${DESTDIR}${PREFIX}/bin/${PROG}
-	rm -f ${DESTDIR}${MANPREFIX}/man1/${PROG}.1
+	rm ${DESTDIR}${PREFIX}/bin/${PROG}
+	rm ${DESTDIR}${MANPREFIX}/man1/${PROG:=.1}
 
-.PHONY: all clean install uninstall
+.PHONY: all tags clean install uninstall
