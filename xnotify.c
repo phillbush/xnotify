@@ -1316,12 +1316,6 @@ main(int argc, char *argv[])
 	initstructurenotify();
 	initellipsis();
 
-#ifdef __OpenBSD__
-	/* drop "rpath unix" promises */
-	if (pledge("stdio", NULL) == -1)
-		err(1, "pledge");
-#endif
-
 	/* set up queue of notifications */
 	queue = setqueue();
 
