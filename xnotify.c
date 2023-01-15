@@ -1156,7 +1156,7 @@ timeitems(struct Queue *queue)
 	while (item) {
 		tmp = item;
 		item = item->next;
-		if (tmp->sec && time(NULL) - tmp->time > tmp->sec) {
+		if (tmp->sec && time(NULL) - tmp->time >= tmp->sec) {
 			delitem(queue, tmp);
 		}
 	}
