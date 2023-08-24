@@ -4,19 +4,64 @@
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
+
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xresource.h>
-#include <X11/Xft/Xft.h>
 #include <X11/extensions/Xinerama.h>
+#include <X11/extensions/Xrender.h>
 #include <Imlib2.h>
-#include "xnotify.h"
 
-/* user signal flag */
+#include "ctrlfnt.h"
+
+#define APP_CLASS           "XNotify"
+#define APP_NAME            "xnotify"
+#define DEFWIDTH            350     /* default width of a notification */
+#define MAXLINES            128     /* maximum number of unwrapped lines */
+#define MIN(x,y)            ((x)<(y)?(x):(y))
+#define MAX(x,y)            ((x)>(y)?(x):(y))
+#define BETWEEN(x, a, b)    ((a) <= (x) && (x) <= (b))
+#define RED(v)   ((((v) & 0xFF0000) >> 8) | (((v) & 0xFF0000) >> 16))
+#define GREEN(v) ((((v) & 0x00FF00)     ) | (((v) & 0x00FF00) >> 8))
+#define BLUE(v)  ((((v) & 0x0000FF) << 8) | (((v) & 0x0000FF)     ))
+
+#define ATOMS                                   \
+	X(UTF8_STRING)                          \
+	X(_NET_WM_NAME)                         \
+	X(_NET_WM_WINDOW_TYPE)                  \
+	X(_NET_WM_WINDOW_TYPE_NOTIFICATION)     \
+	X(_NET_WM_STATE)                        \
+	X(_NET_WM_STATE_ABOVE)
+
+#define RESOURCES                                                                        \
+	/* ENUM            CLASS                 NAME                   DEFAULT        */\
+	X(RES_ALIGNMENT,  "Alignment",          "alignment",            LeftAlignment   )\
+	X(RES_BACKGROUND, "Background",         "background",           0x000000        )\
+	X(RES_BORDERCLR,  "BorderColor",        "borderColor",          0x3465A4        )\
+	X(RES_BORDERWID,  "BorderWidth",        "borderWidth",          1               )\
+	X(RES_FACENAME,   "FaceName",           "faceName",             0               )\
+	X(RES_FOREGROUND, "Foreground",         "foreground",           0xFFFFFF        )\
+	X(RES_GAP,        "Gap",                "gap",                  7               )\
+	X(RES_GRAVITY,    "Gravity",            "gravity",              NorthEastGravity)\
+	X(RES_IMAGEWID,   "ImageWidth",         "imageWidth",           80              )\
+	X(RES_LEADING,    "Leading",            "leading",              5               )\
+	X(RES_MAXHEIGHT,  "MaxHeight",          "maxHeight",            300             )\
+	X(RES_OPACITY,    "Opacity",            "opacity",              0xFFFF          )\
+	X(RES_PADDING,    "Padding",            "padding",              10              )\
+	X(RES_SHRINK,     "Shrink",             "shrink",               0               )\
+
+enum ItemOption {IMG, BG, FG, BRD, TAG, CMD, SEC, BAR, UNKNOWN};
+
+enum {DownWards, UpWards};
+
+enum {LeftAlignment, CenterAlignment, RightAlignment};
+
 enum {
 	SIGNAL_NONE    = 0,
 	SIGNAL_KILL    = 1,
@@ -24,155 +69,261 @@ enum {
 	SIGNAL_KILLALL = 3,
 };
 
+enum Atom {
+#define X(atom) atom,
+	ATOMS
+	NATOMS
+#undef  X
+};
+
+enum Resource {
+#define X(resource, class, name, value) resource,
+	RESOURCES
+	NRESOURCES
+#undef  X
+};
+
+typedef struct {
+	XrmClass        class;
+	XrmName         name;
+} Resource;
+
+/* monitor geometry structure */
+struct Monitor {
+	int num;
+	int x, y, w, h;
+};
+
+/* notification item specification structure */
+struct Itemspec {
+	char *firstline;
+	char *otherlines;
+	char *file;
+	char *background;
+	char *foreground;
+	char *border;
+	char *tag;
+	char *cmd;
+	int bar;
+	int sec;
+};
+
+/* notification item structure */
+struct Item {
+	struct Item *prev, *next;
+
+	int nlines;
+	char *line[MAXLINES];
+	char *tag;
+	char *cmd;
+
+	time_t time;
+	int sec;
+
+	int w, h;
+	int imgw;
+	int textw;
+
+	int bar;
+
+	XRenderColor background;
+	XRenderColor foreground;
+	XRenderColor borderclr;
+
+	Imlib_Image image;
+	Window win;
+};
+
+/* notification queue structure */
+struct Queue {
+	/* queue pointers */
+	struct Item *head, *tail;
+
+	/* general geometry for the notification queue */
+	int x, y;       /* position of the first notification */
+	int w, h;       /* width and height of individual notifications */
+
+	/* whether the queue changed */
+	bool change;
+};
+
+/* ellipsis size and font structure */
+struct Ellipsis {
+	char *s;
+	size_t len;     /* length of s */
+	int width;      /* size of ellipsis string */
+};
+
 /* X stuff */
+static int alignment;
+static int seconds = 10;
+static int saveargc;
+static char **saveargv;
 static Display *dpy;
 static Colormap colormap;
 static Visual *visual;
 static Window root;
-static XrmDatabase xdb;
-static char *xrm;
 static int screen;
 static int depth;
 static int xfd;
 static struct Monitor mon;
-static Atom utf8string;
-static Atom netatom[NetLast];
-static struct DC dc;
-static struct Fonts titlefnt, bodyfnt;
+static Atom atoms[NATOMS];
+static Resource application, resources[NRESOURCES];
+static XRenderColor background, foreground, borderclr;
 static struct Ellipsis ellipsis;
+static CtrlFontSet *fontset = NULL;
+static int fonth;
+static XRenderPictFormat *xformat, *alphaformat;
+static int gravity;    /* NorthEastGravity, NorthGravity, etc */
+static int direction;  /* DownWards or UpWards */
+static int gap_pixels, border_pixels, leading_pixels, padding_pixels;
+static int max_height, image_pixels;
+static unsigned short opacity;
+static bool shrink;
+static unsigned int actionbutton = Button3;
 
 /* flags */
-static int oflag;       /* whether only one notification must exist at a time */
-static int wflag;       /* whether to let window manager manage notifications */
+static bool oflag;      /* whether only one notification must exist at a time */
+static bool wflag;      /* whether to let window manager manage notifications */
+static bool rflag;      /* whether to watch for notifications in the root window */
 volatile sig_atomic_t sigflag;
 
-/* include configuration structure */
-#include "config.h"
-
-/* show usage */
 void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: xnotify [-ow] [-G gravity] [-b button] [-g geometry] [-h height] [-m monitor] [-s seconds]\n");
+	(void)fprintf(stderr, "usage: xnotify [-ow] [-G gravity] [-b button] [-g geometry]\n");
+	(void)fprintf(stderr, "               [-h height] [-m monitor] [-s seconds]\n");
 	exit(1);
 }
 
-/* get configuration from X resources */
-static void
-getresources(void)
+static void *
+emalloc(size_t size)
 {
-	XrmValue xval;
-	unsigned long n;
-	char *type;
+	void *p;
 
-	if (xrm == NULL || xdb == NULL)
-		return;
+	if ((p = malloc(size)) == NULL)
+		err(1, "malloc");
+	return p;
+}
 
-	if (XrmGetResource(xdb, "xnotify.title.faceName", "*", &type, &xval) == True)
-		config.titlefont = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.body.faceName", "*", &type, &xval) == True)
-		config.bodyfont = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.background", "*", &type, &xval) == True)
-		config.background_color = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.foreground", "*", &type, &xval) == True)
-		config.foreground_color = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.border", "*", &type, &xval) == True)
-		config.border_color = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.geometry", "*", &type, &xval) == True)
-		config.geometryspec = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.gravity", "*", &type, &xval) == True)
-		config.gravityspec = xval.addr;
-	if (XrmGetResource(xdb, "xnotify.borderWidth", "*", &type, &xval) == True)
-		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
-			config.border_pixels = n;
-	if (XrmGetResource(xdb, "xnotify.gap", "*", &type, &xval) == True)
-		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
-			config.gap_pixels = n;
-	if (XrmGetResource(xdb, "xnotify.imageWidth", "*", &type, &xval) == True)
-		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
-			config.image_pixels = n;
-	if (XrmGetResource(xdb, "xnotify.leading", "*", &type, &xval) == True)
-		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
-			config.leading_pixels = n;
-	if (XrmGetResource(xdb, "xnotify.padding", "*", &type, &xval) == True)
-		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
-			config.padding_pixels = n;
-	if (XrmGetResource(xdb, "xnotify.maxHeight", "*", &type, &xval) == True)
-		if ((n = strtoul(xval.addr, NULL, 10)) < INT_MAX)
-			config.max_height = n;
-	if (XrmGetResource(xdb, "xnotify.shrink", "*", &type, &xval) == True)
-		config.shrink = (strcasecmp(xval.addr, "true") == 0 ||
-		                strcasecmp(xval.addr, "on") == 0 ||
-		                strcasecmp(xval.addr, "1") == 0);
-	if (XrmGetResource(xdb, "xnotify.wrap", "*", &type, &xval) == True)
-		config.wrap = (strcasecmp(xval.addr, "true") == 0 ||
-		                strcasecmp(xval.addr, "on") == 0 ||
-		                strcasecmp(xval.addr, "1") == 0);
-	if (XrmGetResource(xdb, "xnotify.alignment", "*", &type, &xval) == True) {
-		if (strcasecmp(xval.addr, "center") == 0)
-			config.alignment = CenterAlignment;
-		else if (strcasecmp(xval.addr, "left") == 0)
-			config.alignment = LeftAlignment;
-		else if (strcasecmp(xval.addr, "right") == 0)
-			config.alignment = RightAlignment;
-	if (XrmGetResource(xdb, "xnotify.alignTop", "*", &type, &xval) == True)
-		config.align_top = (strcasecmp(xval.addr, "true") == 0 ||
-		                strcasecmp(xval.addr, "on") == 0 ||
-		                strcasecmp(xval.addr, "1") == 0);
+static char *
+gettextprop(Window window, Atom prop)
+{
+	char *text;
+	unsigned char *p;
+	unsigned long len;
+	unsigned long dl;               /* dummy variable */
+	int format, status;
+	Atom type;
+
+	text = NULL;
+	status = XGetWindowProperty(
+		dpy,
+		window,
+		prop,
+		0L,
+		0x1FFFFFFF,
+		False,
+		AnyPropertyType,
+		&type, &format,
+		&len, &dl,
+		&p
+	);
+	if (status != Success || len == 0 || p == NULL) {
+		goto done;
+	}
+	if ((text = emalloc(len + 1)) == NULL) {
+		goto done;
+	}
+	memcpy(text, p, len);
+	text[len] = '\0';
+done:
+	XFree(p);
+	return text;
+}
+
+static void
+parsegravityspec(int *gravity, int *direction, const char *gravityspec)
+{
+	if (gravityspec == NULL || strcmp(gravityspec, "N") == 0) {
+		*gravity = NorthGravity;
+		*direction = DownWards;
+	} else if (strcmp(gravityspec, "NW") == 0) {
+		*gravity = NorthWestGravity;
+		*direction = DownWards;
+	} else if (strcmp(gravityspec, "NE") == 0) {
+		*gravity = NorthEastGravity;
+		*direction = DownWards;
+	} else if (strcmp(gravityspec, "W") == 0) {
+		*gravity = WestGravity;
+		*direction = DownWards;
+	} else if (strcmp(gravityspec, "C") == 0) {
+		*gravity = CenterGravity;
+		*direction = DownWards;
+	} else if (strcmp(gravityspec, "E") == 0) {
+		*gravity = EastGravity;
+		*direction = DownWards;
+	} else if (strcmp(gravityspec, "SW") == 0) {
+		*gravity = SouthWestGravity;
+		*direction = UpWards;
+	} else if (strcmp(gravityspec, "S") == 0) {
+		*gravity = SouthGravity;
+		*direction = UpWards;
+	} else if (strcmp(gravityspec, "SE") == 0) {
+		*gravity = SouthEastGravity;
+		*direction = UpWards;
+	} else {
+		warnx("Unknown gravity %s", gravityspec);
 	}
 }
 
-/* get configuration from commmand-line */
 static void
-getoptions(int argc, char *argv[])
+parseoptions(int argc, char *argv[])
 {
 	unsigned long n;
 	int ch;
 
-	while ((ch = getopt(argc, argv, "G:b:g:h:m:os:w")) != -1) {
+	while ((ch = getopt(argc, argv, "G:b:g:h:m:ors:w")) != -1) {
 		switch (ch) {
 		case 'G':
-			config.gravityspec = optarg;
+			parsegravityspec(&gravity, &direction, optarg);
 			break;
 		case 'b':
 			if (*(optarg+1) != '\0')
 				break;
 			switch (*optarg) {
 			case '1':
-				config.actionbutton = Button1;
+				actionbutton = Button1;
 				break;
 			case '2':
-				config.actionbutton = Button2;
+				actionbutton = Button2;
 				break;
 			case '3':
-				config.actionbutton = Button3;
-				break;
-			case '4':
-				config.actionbutton = Button4;
-				break;
-			case '5':
-				config.actionbutton = Button5;
+				actionbutton = Button3;
 				break;
 			default:
 				break;
 			}
 			break;
 		case 'g':
-			config.geometryspec = optarg;
+			//config.geometryspec = optarg;
 			break;
 		case 'h':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
-				config.max_height = n;
+				max_height = n;
 			break;
 		case 'm':
 			mon.num = atoi(optarg);
 			break;
 		case 'o':
-			oflag = 1;
+			oflag = true;
+			break;
+		case 'r':
+			rflag = true;
 			break;
 		case 's':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
-				config.sec = n;
+				seconds = n;
 			break;
 		case 'w':
 			wflag = 1;
@@ -189,20 +340,23 @@ getoptions(int argc, char *argv[])
 		usage();
 }
 
-/* get XftColor *color from color string s */
-static int
-ealloccolor(const char *s, XftColor *color, int exitonerror)
+static void
+setcolor(XRenderColor *color, const char *value)
 {
-	if (!XftColorAllocName(dpy, visual, colormap, s, color)) {
-		if (exitonerror)
-			errx(1, "could not allocate color: %s", s);
-		warnx("could not allocate color: %s", s);
-		return -1;
+	XColor xcolor;
+
+	if (value == NULL)
+		return;
+	if (!XParseColor(dpy, colormap, value, &xcolor)) {
+		warnx("%s: unknown color name", value);
+		return;
 	}
-	return 0;
+	color->red   = (xcolor.flags & DoRed)   ? xcolor.red   : 0x0000;
+	color->green = (xcolor.flags & DoGreen) ? xcolor.green : 0x0000;
+	color->blue  = (xcolor.flags & DoBlue)  ? xcolor.blue  : 0x0000;
+	color->alpha = 0xFFFF;
 }
 
-/* get number from *s into n, return 1 if error, update s to end of number */
 static int
 getnum(const char **s, int *n)
 {
@@ -217,151 +371,6 @@ getnum(const char **s, int *n)
 	return retval;
 }
 
-/* parse geometry specification and return geometry values */
-static void
-parsegeometryspec(int *x, int *y, int *w, int *h)
-{
-	int sign;
-	int n;
-	const char *s;
-
-	*x = *y = *w = *h = 0;
-	s = config.geometryspec;
-
-	if (*s != '+' && *s != '-') {
-		/* get *w */
-		if (getnum(&s, &n))
-			goto error;
-		if (*s == '%') {
-			if (n > 100)
-				goto error;
-			*w = (n * (mon.w - config.border_pixels * 2))/100;
-			s++;
-		} else {
-			*w = n;
-		}
-		if (*s++ != 'x')
-			goto error;
-
-		/* get *h */
-		if (getnum(&s, &n))
-			goto error;
-		if (*s == '%') {
-			if (n > 100)
-				goto error;
-			*h = (n * (mon.h - config.border_pixels * 2))/100;
-			s++;
-		} else {
-			*h = n;
-		}
-	}
-
-	if (*s == '+' || *s == '-') {
-		/* get *x */
-		sign = (*s++ == '-') ? -1 : 1;
-		if (getnum(&s, &n))
-			goto error;
-		*x = n * sign;
-		if (*s != '+' && *s != '-')
-			goto error;
-
-		/* get *y */
-		sign = (*s++ == '-') ? -1 : 1;
-		if (getnum(&s, &n))
-			goto error;
-		*y = n * sign;
-	}
-	if (*s != '\0')
-		goto error;
-
-	return;
-
-error:
-	errx(1, "improper geometry specification %s", config.geometryspec);
-}
-
-/* parse gravity specification and return gravity value */
-static void
-parsegravityspec(int *gravity, int *direction)
-{
-	if (config.gravityspec == NULL || strcmp(config.gravityspec, "N") == 0) {
-		*gravity = NorthGravity;
-		*direction = DownWards;
-	} else if (strcmp(config.gravityspec, "NW") == 0) {
-		*gravity = NorthWestGravity;
-		*direction = DownWards;
-	} else if (strcmp(config.gravityspec, "NE") == 0) {
-		*gravity = NorthEastGravity;
-		*direction = DownWards;
-	} else if (strcmp(config.gravityspec, "W") == 0) {
-		*gravity = WestGravity;
-		*direction = DownWards;
-	} else if (strcmp(config.gravityspec, "C") == 0) {
-		*gravity = CenterGravity;
-		*direction = DownWards;
-	} else if (strcmp(config.gravityspec, "E") == 0) {
-		*gravity = EastGravity;
-		*direction = DownWards;
-	} else if (strcmp(config.gravityspec, "SW") == 0) {
-		*gravity = SouthWestGravity;
-		*direction = UpWards;
-	} else if (strcmp(config.gravityspec, "S") == 0) {
-		*gravity = SouthGravity;
-		*direction = UpWards;
-	} else if (strcmp(config.gravityspec, "SE") == 0) {
-		*gravity = SouthEastGravity;
-		*direction = UpWards;
-	} else {
-		errx(EXIT_FAILURE, "Unknown gravity %s", config.gravityspec);
-	}
-}
-
-/* parse font string */
-static void
-parsefonts(struct Fonts *fnt, const char *s)
-{
-	const char *p;
-	char buf[1024];
-	size_t nfont = 0;
-
-	fnt->nfonts = 1;
-	for (p = s; *p; p++)
-		if (*p == ',')
-			fnt->nfonts++;
-
-	if ((fnt->fonts = calloc(fnt->nfonts, sizeof *fnt->fonts)) == NULL)
-		err(1, "calloc");
-
-	p = s;
-	while (*p != '\0') {
-		size_t i;
-
-		i = 0;
-		while (isspace(*p))
-			p++;
-		while (i < sizeof buf && *p != '\0' && *p != ',')
-			buf[i++] = *p++;
-		if (i >= sizeof buf)
-			errx(1, "font name too long");
-		if (*p == ',')
-			p++;
-		buf[i] = '\0';
-		if (nfont == 0)
-			if ((fnt->pattern = FcNameParse((FcChar8 *)buf)) == NULL)
-				errx(1, "the first font in the cache must be loaded from a font string");
-		fnt->fonts[nfont] = XftFontOpenXlfd(dpy, screen, buf);
-		if (fnt->fonts[nfont] == NULL) {
-			fnt->fonts[nfont] = XftFontOpenName(dpy, screen, buf);
-			if (fnt->fonts[nfont] == NULL) {
-				errx(1, "could not open font: %s", buf);
-			}
-		}
-		nfont++;
-	}
-	fnt->texth = fnt->fonts[0]->height;
-}
-
-/* signal SIGUSR1 handler (close all notifications) */
 static void
 sigusr1handler(int sig)
 {
@@ -369,7 +378,6 @@ sigusr1handler(int sig)
 	sigflag = SIGNAL_KILL;
 }
 
-/* signal SIGUSR2 handler (print cmd of first notification) */
 static void
 sigusr2handler(int sig)
 {
@@ -377,7 +385,6 @@ sigusr2handler(int sig)
 	sigflag = SIGNAL_CMD;
 }
 
-/* signal SIGHUP handler (print cmd of first notification) */
 static void
 sighuphandler(int sig)
 {
@@ -385,7 +392,6 @@ sighuphandler(int sig)
 	sigflag = SIGNAL_KILLALL;
 }
 
-/* init signal  */
 static void
 initsignal(void)
 {
@@ -410,7 +416,6 @@ initsignal(void)
 		err(1, "sigaction");
 }
 
-/* query monitor information */
 static void
 initmonitor(void)
 {
@@ -432,43 +437,6 @@ initmonitor(void)
 	}
 }
 
-/* init draw context structure */
-static void
-initdc(void)
-{
-	/* get colors */
-	ealloccolor(config.background_color,    &dc.background, 1);
-	ealloccolor(config.foreground_color,    &dc.foreground, 1);
-	ealloccolor(config.border_color,        &dc.border, 1);
-
-	/* create common GC */
-	dc.gc = XCreateGC(dpy, root, 0, NULL);
-
-	/* try to get font */
-	parsefonts(&titlefnt, config.titlefont);
-	parsefonts(&bodyfnt, config.bodyfont);
-}
-
-/* Intern the used atoms */
-static void
-initatoms(void)
-{
-	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
-	netatom[NetWMName] = XInternAtom(dpy, "_NET_WM_NAME", False);
-	netatom[NetWMWindowType] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
-	netatom[NetWMWindowTypeNotification] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
-	netatom[NetWMState] = XInternAtom(dpy, "_NET_WM_STATE", False);
-	netatom[NetWMStateAbove] = XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
-}
-
-/* watch ConfigureNotify on root window so we're notified when monitors change */
-static void
-initstructurenotify(void)
-{
-	XSelectInput(dpy, root, StructureNotifyMask);
-}
-
-/* allocate queue and set its members */
 static struct Queue *
 setqueue(void)
 {
@@ -480,21 +448,21 @@ setqueue(void)
 
 	queue->head = NULL;
 	queue->tail = NULL;
-	queue->change = 0;
+	queue->change = false;
 
 	/* set geometry of notification queue */
-	parsegravityspec(&queue->gravity, &queue->direction);
-	parsegeometryspec(&queue->x, &queue->y, &queue->w, &queue->h);
-	if (config.image_pixels < 0)
-		config.image_pixels = 0;
-	minw = ellipsis.width + config.image_pixels + config.padding_pixels * 3 + 1;
+	queue->x = 0;
+	queue->y = 0;
+	queue->w = 0;
+	queue->h = 0;
+	//parsegeometryspec(&queue->x, &queue->y, &queue->w, &queue->h);
+	minw = ellipsis.width + image_pixels + padding_pixels * 3 + 1;
 	if (queue->w < minw)
 		queue->w = MAX(DEFWIDTH, minw);
 
 	return queue;
 }
 
-/* get item of given window */
 static struct Item *
 getitem(struct Queue *queue, Window win)
 {
@@ -506,14 +474,6 @@ getitem(struct Queue *queue, Window win)
 	return NULL;
 }
 
-/* copy area from item's pixmap into item's window */
-static void
-copypixmap(struct Item *item)
-{
-	XCopyArea(dpy, item->pixmap, item->win, dc.gc, 0, 0, item->w, item->h, 0, 0);
-}
-
-/* load and scale image */
 static Imlib_Image
 loadimage(const char *file)
 {
@@ -569,236 +529,124 @@ loadimage(const char *file)
 	return image;
 }
 
-/* create window for item */
 static void
 createwindow(struct Item *item)
 {
-	XClassHint classhint = {"XNotify", "XNotify"};
-	XSetWindowAttributes swa;
-
-	swa.override_redirect = (wflag ? False : True);
-	swa.background_pixel = dc.background.pixel;
-	swa.border_pixel = dc.border.pixel;
-	swa.save_under = True;  /* pop-up windows should save_under */
-	swa.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask;
-
-	/*
-	 * windows are created at 0,0 position for they'll be moved later
-	 * windows are created with 1pix height for they'll be resized later
-	 */
-	item->win = XCreateWindow(dpy, root, 0, 0, item->w, 1, config.border_pixels,
-	                          CopyFromParent, CopyFromParent, CopyFromParent,
-	                          CWOverrideRedirect | CWBackPixel | CWBorderPixel |
-	                          CWSaveUnder | CWEventMask, &swa);
-
-	XSetClassHint(dpy, item->win, &classhint);
-
-	XStoreName(dpy, item->win, "XNotify");
-	XChangeProperty(dpy, item->win, netatom[NetWMName], utf8string, 8, PropModeReplace,
-	                (unsigned char *)"XNotify", strlen("XNotify"));
-	XChangeProperty(dpy, item->win, netatom[NetWMWindowType], XA_ATOM, 32, PropModeReplace,
-	                (unsigned char *)&netatom[NetWMWindowTypeNotification], 1L);
-	XChangeProperty(dpy, item->win, netatom[NetWMState], XA_ATOM, 32, PropModeReplace,
-	                (unsigned char *)&netatom[NetWMStateAbove], 1L);
+	item->win = XCreateWindow(
+		dpy, root,
+		0, 0,           /* placed at (0,0) for now; will be moved later */
+		item->w,
+		1,              /* sized with 1px for now; will be resized later */
+		0,
+		depth,
+		InputOutput,
+		visual,
+		CWOverrideRedirect | CWBackPixel | CWBorderPixel |
+		CWSaveUnder | CWEventMask | CWColormap,
+		&(XSetWindowAttributes){
+			.override_redirect = wflag ? False : True,
+			.background_pixel = 0,
+			.border_pixel =0,
+			.colormap = colormap,
+			.save_under = True,
+			.event_mask = ButtonPressMask | PointerMotionMask,
+		}
+	);
+	XmbSetWMProperties(
+		dpy, item->win,
+		APP_CLASS,      /* title name */
+		APP_CLASS,      /* icon name */
+		saveargv,
+		saveargc,
+		NULL,
+		NULL,
+		&(XClassHint){
+			.res_class = APP_CLASS,
+			.res_name = APP_NAME,
+		}
+	);
+	XChangeProperty(
+		dpy,
+		item->win,
+		atoms[_NET_WM_NAME],
+		atoms[UTF8_STRING],
+		8,
+		PropModeReplace,
+		(unsigned char *)APP_CLASS,
+		strlen(APP_CLASS)
+	);
+	XChangeProperty(
+		dpy,
+		item->win,
+		atoms[_NET_WM_WINDOW_TYPE],
+		XA_ATOM,
+		32,
+		PropModeReplace,
+		(unsigned char *)&atoms[_NET_WM_WINDOW_TYPE_NOTIFICATION],
+		1
+	);
+	XChangeProperty(
+		dpy,
+		item->win,
+		atoms[_NET_WM_STATE],
+		XA_ATOM,
+		32,
+		PropModeReplace,
+		(unsigned char *)&atoms[_NET_WM_STATE_ABOVE],
+		1
+	);
 }
 
-/* get next utf8 char from s return its codepoint and set next_ret to pointer to end of character */
-static FcChar32
-getnextutf8char(const char *s, const char **next_ret)
-{
-	static const unsigned char utfbyte[] = {0x80, 0x00, 0xC0, 0xE0, 0xF0};
-	static const unsigned char utfmask[] = {0xC0, 0x80, 0xE0, 0xF0, 0xF8};
-	static const FcChar32 utfmin[] = {0, 0x00,  0x80,  0x800,  0x10000};
-	static const FcChar32 utfmax[] = {0, 0x7F, 0x7FF, 0xFFFF, 0x10FFFF};
-	/* 0xFFFD is the replacement character, used to represent unknown characters */
-	static const FcChar32 unknown = 0xFFFD;
-	FcChar32 ucode;         /* FcChar32 type holds 32 bits */
-	size_t usize = 0;       /* n' of bytes of the utf8 character */
-	size_t i;
-
-	*next_ret = s+1;
-
-	/* get code of first byte of utf8 character */
-	for (i = 0; i < sizeof utfmask; i++) {
-		if (((unsigned char)*s & utfmask[i]) == utfbyte[i]) {
-			usize = i;
-			ucode = (unsigned char)*s & ~utfmask[i];
-			break;
-		}
-	}
-
-	/* if first byte is a continuation byte or is not allowed, return unknown */
-	if (i == sizeof utfmask || usize == 0)
-		return unknown;
-
-	/* check the other usize-1 bytes */
-	s++;
-	for (i = 1; i < usize; i++) {
-		*next_ret = s+1;
-		/* if byte is nul or is not a continuation byte, return unknown */
-		if (*s == '\0' || ((unsigned char)*s & utfmask[0]) != utfbyte[0])
-			return unknown;
-		/* 6 is the number of relevant bits in the continuation byte */
-		ucode = (ucode << 6) | ((unsigned char)*s & ~utfmask[0]);
-		s++;
-	}
-
-	/* check if ucode is invalid or in utf-16 surrogate halves */
-	if (!BETWEEN(ucode, utfmin[usize], utfmax[usize])
-	    || BETWEEN (ucode, 0xD800, 0xDFFF))
-		return unknown;
-
-	return ucode;
-}
-
-/* get which font contains a given code point */
-static XftFont *
-getfontucode(struct Fonts *fnt, FcChar32 ucode)
-{
-	FcCharSet *fccharset = NULL;
-	FcPattern *fcpattern = NULL;
-	FcPattern *match = NULL;
-	XftFont *retfont = NULL;
-	XftResult result;
-	size_t i;
-
-	for (i = 0; i < fnt->nfonts; i++)
-		if (XftCharExists(dpy, fnt->fonts[i], ucode) == FcTrue)
-			return fnt->fonts[i];
-
-	/* create a charset containing our code point */
-	fccharset = FcCharSetCreate();
-	FcCharSetAddChar(fccharset, ucode);
-
-	/* create a pattern akin to the fnt->pattern but containing our charset */
-	if (fccharset) {
-		fcpattern = FcPatternDuplicate(fnt->pattern);
-		FcPatternAddCharSet(fcpattern, FC_CHARSET, fccharset);
-	}
-
-	/* find pattern matching fcpattern */
-	if (fcpattern) {
-		FcConfigSubstitute(NULL, fcpattern, FcMatchPattern);
-		FcDefaultSubstitute(fcpattern);
-		match = XftFontMatch(dpy, screen, fcpattern, &result);
-	}
-
-	/* if found a pattern, open its font */
-	if (match) {
-		retfont = XftFontOpenPattern(dpy, match);
-		if (retfont && XftCharExists(dpy, retfont, ucode) == FcTrue) {
-			if ((fnt->fonts = realloc(fnt->fonts, fnt->nfonts+1)) == NULL)
-				err(1, "realloc");
-			fnt->fonts[fnt->nfonts] = retfont;
-			return fnt->fonts[fnt->nfonts++];
-		} else {
-			XftFontClose(dpy, retfont);
-		}
-	}
-
-	/* in case no fount was found, return the first one */
-	return fnt->fonts[0];
-}
-
-/*
- * return width of *s in pixels; draw *s into draw if draw != NULL
- * return in *s where stopped processing when text wrapping occurs
- */
-static int
-drawtext(struct Fonts *fnt, XftDraw *draw, XftColor *color, int x, int y, int w, const char **s)
-{
-	XftFont *currfont;
-	XGlyphInfo ext;
-	FcChar32 ucode;
-	const char *text, *next, *check, *t;
-	size_t len;
-	int textwidth = 0;
-	int wordwidth = 0;
-	int texty;
-
-	if (*s == NULL)
-		return 0;
-	check = text = *s;
-	while (*text) {
-		/* wrap text if next word doesn't fit in w */
-		wordwidth = 0;
-		while (config.wrap && w && *check && !isspace(*check)) {
-			ucode = getnextutf8char(check, &next);
-			currfont = getfontucode(fnt, ucode);
-			len = next - check;
-			XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)check, len, &ext);
-			wordwidth += ext.xOff;
-			check = next;
-			if (w && textwidth && textwidth + wordwidth > w) {
-				if (draw)
-					*s = text;
-				goto end;
-			}
-		}
-
-		/* get the next unicode character and the first font that supports it */
-		ucode = getnextutf8char(text, &next);
-		currfont = getfontucode(fnt, ucode);
-
-		/* compute the width of the glyph for that character on that font */
-		len = next - text;
-		XftTextExtentsUtf8(dpy, currfont, (XftChar8 *)text, len, &ext);
-		t = text;
-		if (w && textwidth + ext.xOff + (*text && *(text+1) ? ellipsis.width : 0) > w) {
-			t = ellipsis.s;
-			len = ellipsis.len;
-			currfont = ellipsis.font;
-			if (config.wrap) {
-				while (*next && !isspace(*next))
-					next++;
-			} else {
-				while (*next)
-					next++;
-			}
-			textwidth += ellipsis.width;
-		}
-		textwidth += ext.xOff;
-
-		if (draw) {
-			texty = y + (fnt->texth - (currfont->ascent + currfont->descent))/2 + currfont->ascent;
-			XftDrawStringUtf8(draw, color, currfont, x, texty, (XftChar8 *)t, len);
-			x += ext.xOff;
-			*s = next;
-		}
-
-		if (next > check)
-			check = next;
-		text = next;
-	}
-end:
-	return textwidth;
-}
-
-/* draw contents of notification item on item->pixmap */
 static void
 drawitem(struct Item *item)
 {
-	Drawable textpixmap, imagepixmap;
+	Pixmap pixmap, fg, alpha;
+	Picture picture;
 	Imlib_Image image = NULL;
-	struct Fonts *fnt;
 	const char *text;
-	XftDraw *draw;
+	size_t len, j;
 	int xaligned;
-	int bar, i, x, newh;
+	int bar, i, x, y, newh;
 	int texth, imgh, imgw;
 	int origimgw, origimgh;
 
-	item->pixmap = XCreatePixmap(dpy, item->win, item->w, config.max_height, depth);
-	XSetForeground(dpy, dc.gc, item->background.pixel);
-	XFillRectangle(dpy, item->pixmap, dc.gc, 0, 0, item->w, config.max_height);
+	pixmap = XCreatePixmap(dpy, item->win, item->w, max_height, depth);
+	picture = XRenderCreatePicture(dpy, pixmap, xformat, 0, NULL);
+	XRenderFillRectangle(
+		dpy,
+		PictOpSrc,
+		picture,
+		&item->background,
+		0, 0,
+		item->w,
+		max_height
+	);
+
+	/* draw opacity */
+	alpha = XRenderCreateSolidFill(dpy, &(XRenderColor){
+		.red = 0, .green = 0, .blue = 0,
+		.alpha = opacity
+	});
+	XRenderComposite(
+		dpy,
+		PictOpSrc,
+		picture,
+		alpha,
+		picture,
+		0, 0,
+		0, 0,
+		0, 0,
+		item->w,
+		max_height
+	);
 
 	/* draw image */
+	y = padding_pixels;
+	fg = XRenderCreateSolidFill(dpy, &item->foreground);
 	imgw = imgh = 0;
 	if (item->image && item->imgw > 0) {
-		imagepixmap = XCreatePixmap(dpy, item->pixmap, item->imgw, item->imgw, depth);
-		XFillRectangle(dpy, imagepixmap, dc.gc, 0, 0, item->imgw, item->imgw);
 		imlib_context_set_image(item->image);
-		imlib_context_set_drawable(imagepixmap);
+		imlib_context_set_drawable(pixmap);
 		origimgw = imlib_image_get_width();
 		origimgh = imlib_image_get_height();
 		if (imgw > imgh) {
@@ -811,82 +659,101 @@ drawitem(struct Item *item)
 		image = imlib_create_cropped_scaled_image(0, 0, origimgw, origimgh, imgw, imgh);
 		imlib_free_image();
 		imlib_context_set_image(image);
-		imlib_render_image_on_drawable((item->imgw - imgw) / 2, (item->imgw - imgh) / 2);
+		imlib_render_image_on_drawable(
+			padding_pixels + (item->imgw - imgw) / 2,
+			padding_pixels + (item->imgw - imgh) / 2
+		);
 		imlib_free_image();
 	}
 
 	/* draw text */
 	texth = 0;
-	if (item->textw > 0) {
-		textpixmap = XCreatePixmap(dpy, item->pixmap, item->textw, config.max_height, depth);
-		XFillRectangle(dpy, textpixmap, dc.gc, 0, 0, item->textw, config.max_height);
-		draw = XftDrawCreate(dpy, textpixmap, visual, colormap);
-		for (i = 0; i < item->nlines; i++) {
-			fnt = (i == 0 && item->nlines > 1) ? &titlefnt : &bodyfnt;
-			text = item->line[i];
-			while (texth <= config.max_height &&
-		      	      (xaligned = drawtext(fnt, NULL, NULL, 0, 0, item->textw, &text)) > 0) {
-				switch (config.alignment) {
-				case LeftAlignment:
-					x = 0;
+	for (i = 0; item->textw > 0 && i < item->nlines; i++) {
+		text = item->line[i];
+		x = padding_pixels;
+		x += (image && item->imgw > 0 ? item->imgw + padding_pixels : 0);
+		while (texth <= max_height) {
+			for (len = j = 0; text[len] != '\0'; len = j, j += strcspn(text + j, " \t")) {
+				j += strspn(text + j, " \t");
+				if (ctrlfnt_width(fontset, text, j) > item->textw)
 					break;
-				case CenterAlignment:
-					xaligned = (item->textw - xaligned) / 2;
-					x = MAX(0, xaligned);
-					break;
-				case RightAlignment:
-					xaligned = item->textw - xaligned;
-					x = MAX(0, xaligned);
-					break;
-				default:
-					break;
-				}
-				drawtext(fnt, draw, &item->foreground, x, texth, item->textw, &text);
-				texth += fnt->texth + config.leading_pixels;
 			}
+			if (len < 1)
+				break;
+			if (xaligned <= 0)
+				break;
+			switch (alignment) {
+			case LeftAlignment:
+				break;
+			case CenterAlignment:
+				xaligned = (item->textw - xaligned) / 2;
+				x = MAX(x, xaligned);
+				break;
+			case RightAlignment:
+				xaligned = item->textw - xaligned;
+				x = MAX(x, xaligned);
+				break;
+			default:
+				break;
+			}
+			ctrlfnt_draw(
+				fontset,
+				picture,
+				fg,
+				(XRectangle){
+					.x = x,
+					.y = y + texth,
+					.width = item->textw,
+					.height = fonth,
+				},
+				text, len
+			);
+			texth += fonth + leading_pixels;
+			text += len;
 		}
-		texth -= config.leading_pixels;
 	}
+	if (texth > leading_pixels)
+		texth -= leading_pixels;
 
+	x = padding_pixels;
+	x += (image && item->imgw > 0 ? item->imgw + padding_pixels : 0);
 	/* draw bar */
 	if (item->bar > 0) {
 		bar = (item->textw * item->bar) / 100;
 		bar = MIN(bar, item->textw);
-		XSetForeground(dpy, dc.gc, item->foreground.pixel);
-		XFillRectangle(dpy, textpixmap, dc.gc, 0, texth, bar, bodyfnt.texth);
-		texth += bodyfnt.texth;
+		XRenderFillRectangle(
+			dpy,
+			PictOpSrc,
+			picture,
+			&item->foreground,
+			x, y + texth,
+			bar,
+			fonth
+		);
+
+		texth += fonth;
 	}
 
 	/* resize notification window based on its contents */
-	newh = MAX(imgh, texth) + 2 * config.padding_pixels;
+	newh = MAX(imgh, texth) + 2 * padding_pixels;
 	item->h = MAX(item->h, newh);
 	XResizeWindow(dpy, item->win, item->w, item->h);
 
 	/* change border color */
-	XSetWindowBorder(dpy, item->win, item->border.pixel);
-
-	/* copy image and text pixmaps to notification pixmap */
-	if (image) {
-		XCopyArea(dpy, imagepixmap, item->pixmap, dc.gc, 0, 0, item->imgw, item->imgw, config.padding_pixels, (item->h - item->imgw) / 2);
-		XFreePixmap(dpy, imagepixmap);
-	}
-	if (item->textw > 0) {
-		XCopyArea(dpy, textpixmap, item->pixmap, dc.gc, 0, 0, item->textw, texth,
-		          config.padding_pixels + (image && item->imgw > 0 ? item->imgw + config.padding_pixels : 0),
-		          config.align_top ? config.padding_pixels : ((item->h - texth) / 2));
-		XFreePixmap(dpy, textpixmap);
-		XftDrawDestroy(draw);
-	}
+	XSetWindowBackgroundPixmap(dpy, item->win, pixmap);
+	XClearWindow(dpy, item->win);
+	XFreePixmap(dpy, pixmap);
+	XRenderFreePicture(dpy, picture);
+	XRenderFreePicture(dpy, fg);
+	XRenderFreePicture(dpy, alpha);
 }
 
-/* reset time of item */
 static void
 resettime(struct Item *item)
 {
 	item->time = time(NULL);
 }
 
-/* call strdup checking for error */
 static char *
 estrdup(const char *s)
 {
@@ -897,11 +764,9 @@ estrdup(const char *s)
 	return t;
 }
 
-/* add notification item and set its window and contents */
 static void
 additem(struct Queue *queue, struct Itemspec *itemspec)
 {
-	struct Fonts *fnt;
 	const char *text;
 	struct Item *item;
 	int w, i;
@@ -931,41 +796,40 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	item->nlines = i;
 
 	/* allocate colors */
-	if (!itemspec->background || ealloccolor(itemspec->background, &item->background, 0) == -1)
-		item->background = dc.background;
-	if (!itemspec->foreground || ealloccolor(itemspec->foreground, &item->foreground, 0) == -1)
-		item->foreground = dc.foreground;
-	if (!itemspec->border || ealloccolor(itemspec->border, &item->border, 0) == -1)
-		item->border = dc.border;
+	item->background = background;
+	item->foreground = foreground;
+	item->borderclr = borderclr;
+	setcolor(&item->background, itemspec->background);
+	setcolor(&item->foreground, itemspec->foreground);
+	setcolor(&item->borderclr, itemspec->border);
 
 	/* compute notification width and height */
-	item->imgw = config.image_pixels;
+	item->imgw = image_pixels;
 	item->h = queue->h;
 	for (i = 0; i < item->nlines; i++) {
 		text = item->line[i];
-		fnt = (i == 0 && item->nlines > 1) ? &titlefnt : &bodyfnt;
-		w = drawtext(fnt, NULL, NULL, 0, 0, 0, &text);
+		w = ctrlfnt_width(fontset, text, strlen(text));
 	}
-	if (config.shrink) {
+	if (shrink) {
 		if (item->image) {
-			item->textw = queue->w - config.image_pixels - config.padding_pixels * 3;
+			item->textw = queue->w - image_pixels - padding_pixels * 3;
 			item->textw = MIN(w, item->textw);
-			item->w = item->textw + config.image_pixels + config.padding_pixels * 3;
+			item->w = item->textw + image_pixels + padding_pixels * 3;
 		} else {
-			item->textw = queue->w - config.padding_pixels * 2;
+			item->textw = queue->w - padding_pixels * 2;
 			item->textw = MIN(w, item->textw);
-			item->w = item->textw + config.padding_pixels * 2;
+			item->w = item->textw + padding_pixels * 2;
 		}
 	} else {
 		item->w = queue->w;
 		if (item->image) {
-			item->textw = queue->w - config.image_pixels - config.padding_pixels * (2 + (item->line[0] ? 1 : 0));
-			if (!config.image_pixels) {
+			item->textw = queue->w - image_pixels - padding_pixels * (2 + (item->line[0] ? 1 : 0));
+			if (!image_pixels) {
 				item->textw = MIN(item->textw, w);
 			}
-			item->imgw = queue->w - item->textw - config.padding_pixels * (2 + (item->line[0] ? 1 : 0));
+			item->imgw = queue->w - item->textw - padding_pixels * (2 + (item->line[0] ? 1 : 0));
 		} else {
-			item->textw = queue->w - config.padding_pixels * 2;
+			item->textw = queue->w - padding_pixels * 2;
 		}
 	}
 
@@ -975,10 +839,9 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	drawitem(item);
 
 	/* a new item was added to the queue, so the queue changed */
-	queue->change = 1;
+	queue->change = true;
 }
 
-/* delete item */
 static void
 delitem(struct Queue *queue, struct Item *item)
 {
@@ -986,7 +849,6 @@ delitem(struct Queue *queue, struct Item *item)
 
 	for (i = 0; i < item->nlines; i++)
 		free(item->line[i]);
-	XFreePixmap(dpy, item->pixmap);
 	XDestroyWindow(dpy, item->win);
 	if (item->prev)
 		item->prev->next = item->next;
@@ -997,10 +859,9 @@ delitem(struct Queue *queue, struct Item *item)
 	else
 		queue->tail = item->prev;
 	free(item);
-	queue->change = 1;
+	queue->change = true;
 }
 
-/* print item's command to stdout */
 static void
 cmditem(struct Item *item)
 {
@@ -1009,7 +870,6 @@ cmditem(struct Item *item)
 	fflush(stdout);
 }
 
-/* check the type of option given to a notification item */
 static enum ItemOption
 optiontype(const char *s)
 {
@@ -1032,7 +892,6 @@ optiontype(const char *s)
 	return UNKNOWN;
 }
 
-/* parse notification line */
 static struct Itemspec *
 parseline(char *s)
 {
@@ -1052,7 +911,7 @@ parseline(char *s)
 	itemspec->tag = NULL;
 	itemspec->cmd = NULL;
 	itemspec->bar = -1;
-	itemspec->sec = config.sec;
+	itemspec->sec = seconds;
 	itemspec->firstline = strtok(s, "\t\n");
 	while (itemspec->firstline && (option = optiontype(itemspec->firstline)) != UNKNOWN) {
 		switch (option) {
@@ -1111,41 +970,6 @@ parseline(char *s)
 	return itemspec;
 }
 
-/* read x events */
-static void
-readevent(struct Queue *queue)
-{
-	struct Item *item;
-	XEvent ev;
-
-	while (XPending(dpy) && !XNextEvent(dpy, &ev)) {
-		switch (ev.type) {
-		case Expose:
-			if (ev.xexpose.count == 0 && (item = getitem(queue, ev.xexpose.window)) != NULL)
-				copypixmap(item);
-			break;
-		case ButtonPress:
-			if ((item = getitem(queue, ev.xbutton.window)) == NULL)
-				break;
-			if ((ev.xbutton.button == config.actionbutton) && item->cmd)
-				cmditem(item);
-			delitem(queue, item);
-			break;
-		case MotionNotify:
-			if ((item = getitem(queue, ev.xmotion.window)) != NULL)
-				resettime(item);
-			break;
-		case ConfigureNotify:   /* monitor arrangement changed */
-			if (ev.xproperty.window == root) {
-				initmonitor();
-				queue->change = 1;
-			}
-			break;
-		}
-	}
-}
-
-/* check whether items have passed the time */
 static void
 timeitems(struct Queue *queue)
 {
@@ -1162,7 +986,6 @@ timeitems(struct Queue *queue)
 	}
 }
 
-/* a notification was deleted or added, reorder the queue of notifications */
 static void
 moveitems(struct Queue *queue)
 {
@@ -1170,63 +993,68 @@ moveitems(struct Queue *queue)
 	int x, y;
 	int h = 0;
 
+	/*
+	 * A notification has been deleted or added;
+	 * reorder the queue of notifications
+	 */
 	for (item = queue->head; item; item = item->next) {
 		x = queue->x + mon.x;
 		y = queue->y + mon.y;
-		switch (queue->gravity) {
+		switch (gravity) {
 		case NorthWestGravity:
 			break;
 		case NorthGravity:
-			x += (mon.w - item->w) / 2 - config.border_pixels;
+			x += (mon.w - item->w) / 2 - border_pixels;
 			break;
 		case NorthEastGravity:
-			x += mon.w - item->w - config.border_pixels * 2;
+			x += mon.w - item->w - border_pixels * 2;
 			break;
 		case WestGravity:
-			y += (mon.h - item->h) / 2 - config.border_pixels;
+			y += (mon.h - item->h) / 2 - border_pixels;
 			break;
 		case CenterGravity:
-			x += (mon.w - item->w) / 2 - config.border_pixels;
-			y += (mon.h - item->h) / 2 - config.border_pixels;
+			x += (mon.w - item->w) / 2 - border_pixels;
+			y += (mon.h - item->h) / 2 - border_pixels;
 			break;
 		case EastGravity:
-			x += mon.w - item->w - config.border_pixels * 2;
-			y += (mon.h - item->h) / 2 - config.border_pixels;
+			x += mon.w - item->w - border_pixels * 2;
+			y += (mon.h - item->h) / 2 - border_pixels;
 			break;
 		case SouthWestGravity:
-			y += mon.h - item->h - config.border_pixels * 2;
+			y += mon.h - item->h - border_pixels * 2;
 			break;
 		case SouthGravity:
-			x += (mon.w - item->w) / 2 - config.border_pixels;
-			y += mon.h - item->h - config.border_pixels * 2;
+			x += (mon.w - item->w) / 2 - border_pixels;
+			y += mon.h - item->h - border_pixels * 2;
 			break;
 		case SouthEastGravity:
-			x += mon.w - item->w - config.border_pixels * 2;
-			y += mon.h - item->h - config.border_pixels * 2;
+			x += mon.w - item->w - border_pixels * 2;
+			y += mon.h - item->h - border_pixels * 2;
 			break;
 		}
 
-		if (queue->direction == DownWards)
+		if (direction == DownWards)
 			y += h;
 		else
 			y -= h;
-		h += item->h + config.gap_pixels + config.border_pixels * 2;
-
+		h += item->h + gap_pixels + border_pixels * 2;
 		XMoveWindow(dpy, item->win, x, y);
 		XMapWindow(dpy, item->win);
-		copypixmap(item);
 	}
 
-	queue->change = 0;
+	queue->change = false;
 }
 
-/* destroy all notification items of the given tag, or all items if tag is NULL */
 static void
 cleanitems(struct Queue *queue, const char *tag)
 {
 	struct Item *item;
 	struct Item *tmp;
 
+	/*
+	 * Free all notification items of the given tag;
+	 * or free all items if tag is NULL
+	 */
 	item = queue->head;
 	while (item) {
 		tmp = item;
@@ -1237,36 +1065,343 @@ cleanitems(struct Queue *queue, const char *tag)
 	}
 }
 
-/* clean up dc elements */
-static void
-cleandc(void)
+static char *
+getresource(XrmDatabase xdb, enum Resource res)
 {
-	XftColorFree(dpy, visual, colormap, &dc.background);
-	XftColorFree(dpy, visual, colormap, &dc.foreground);
-	XftColorFree(dpy, visual, colormap, &dc.border);
+	XrmRepresentation tmp;
+	XrmValue xval;
 
-	XFreeColormap(dpy, colormap);
-
-	XFreeGC(dpy, dc.gc);
+	return XrmQGetResource(
+		xdb,
+		(XrmName[]){
+			application.name,
+			resources[res].name,
+			NULLQUARK
+		},
+		(XrmClass[]){
+			application.class,
+			resources[res].class,
+			NULLQUARK
+		},
+		&tmp,
+		&xval
+	) ? xval.addr : NULL;
 }
 
-/* compute font and width of ellipsis string */
+static void
+setfont(const char *facename, double facesize)
+{
+	CtrlFontSet *fset;
+
+	if (facename == NULL)
+		facename = "xft:";
+	fset = ctrlfnt_open(
+		dpy,
+		screen,
+		visual,
+		colormap,
+		facename,
+		facesize
+	);
+	if (fset == NULL)
+		return;
+	ctrlfnt_free(fontset);
+	fontset = fset;
+	fonth = ctrlfnt_height(fontset);
+}
+
+static void
+parseresources(const char *str)
+{
+	XrmDatabase xdb;
+	const char *value;
+	char *endp;
+	enum Resource res;
+	XRenderColor *color;
+	double d;
+	int n, *num;
+
+	if (str == NULL)
+		return;
+	if ((xdb = XrmGetStringDatabase(str)) == NULL)
+		return;
+	for (res = 0; res < NRESOURCES; res++) {
+		if ((value = getresource(xdb, res)) == NULL)
+			continue;
+		switch (res) {
+		case RES_ALIGNMENT:
+			if (strcasecmp(value, "Left") == 0)
+				alignment = LeftAlignment;
+			else if (strcasecmp(value, "Center") == 0)
+				alignment = CenterAlignment;
+			else if (strcasecmp(value, "Right") == 0)
+				alignment = RightAlignment;
+			else
+				warnx("%s: unknown alignment", value);
+			break;
+		case RES_BACKGROUND:
+		case RES_FOREGROUND:
+		case RES_BORDERCLR:
+			if (res == RES_BACKGROUND)
+				color = &background;
+			else if (res == RES_FOREGROUND)
+				color = &foreground;
+			else if (res == RES_BORDERCLR)
+				color = &borderclr;
+			setcolor(color, value);
+			break;
+		case RES_OPACITY:
+			d = strtod(value, &endp);
+			if (d > 1.0 || d < 0.0 || endp == value)
+				warnx("%s: invalid opacity", value);
+			else
+				opacity = (unsigned short)(0xFFFF * d);
+			break;
+		case RES_MAXHEIGHT:
+		case RES_LEADING:
+		case RES_GAP:
+		case RES_PADDING:
+		case RES_BORDERWID:
+		case RES_IMAGEWID:
+			if (res == RES_MAXHEIGHT)
+				num = &max_height;
+			else if (res == RES_LEADING)
+				num = &leading_pixels;
+			else if (res == RES_GAP)
+				num = &gap_pixels;
+			else if (res == RES_PADDING)
+				num = &padding_pixels;
+			else if (res == RES_BORDERWID)
+				num = &border_pixels;
+			else if (res == RES_IMAGEWID)
+				num = &image_pixels;
+			n = strtol(value, &endp, 10);
+			if (n > 1024 || n < 0 || endp == value)
+				warnx("%s: invalid width", value);
+			else
+				*num = n;
+			break;
+		case RES_GRAVITY:
+			parsegravityspec(&gravity, &direction, value);
+			break;
+		case RES_SHRINK:
+			shrink = strcasecmp(value, "true") == 0
+				|| strcasecmp(value, "on") == 0
+				|| strcasecmp(value, "1") == 0;
+			break;
+		case RES_FACENAME:
+			setfont(value, 0.0);
+			break;
+		case NRESOURCES:
+			/* ignore */
+			break;
+		}
+	}
+	XrmDestroyDatabase(xdb);
+}
+
 static void
 initellipsis(void)
 {
-	XGlyphInfo ext;
-	FcChar32 ucode;
-	const char *s;
-
-	ellipsis.s = ELLIPSIS;
+	ellipsis.s = "…";
 	ellipsis.len = strlen(ellipsis.s);
-	ucode = getnextutf8char(ellipsis.s, &s);
-	ellipsis.font = getfontucode(&bodyfnt, ucode);
-	XftTextExtentsUtf8(dpy, ellipsis.font, (XftChar8 *)ellipsis.s, ellipsis.len, &ext);
-	ellipsis.width = ext.xOff;
+	ellipsis.width = ctrlfnt_width(fontset, ellipsis.s, ellipsis.len);
 }
 
-/* xnotify: show notifications from stdin */
+static void
+setup(void)
+{
+	static char *atomnames[NATOMS] = {
+#define X(atom) [atom] = #atom,
+		ATOMS
+#undef  X
+	};
+	static struct {
+		const char *class, *name;
+		unsigned long value;
+	} resdefs[NRESOURCES] = {
+#define X(i, c, n, v) [i] = { .class = c, .name = n, .value = v, },
+		RESOURCES
+#undef  X
+	};
+	XRenderColor *color;
+	XVisualInfo vinfo;
+	Colormap cmap;
+	int success;
+	enum Resource res;
+
+	ctrlfnt_init();
+	if ((dpy = XOpenDisplay(NULL)) == NULL)
+		errx(EXIT_FAILURE, "could not open display");
+	screen = DefaultScreen(dpy);
+	root = RootWindow(dpy, screen);
+	xfd = XConnectionNumber(dpy);
+	XSelectInput(dpy, root, StructureNotifyMask | PropertyChangeMask);
+
+	/* intern atoms */
+	if (!XInternAtoms(dpy, atomnames, NATOMS, False, atoms))
+		errx(EXIT_FAILURE, "could not intern X atoms");
+
+	/* intern quarks and set colors */
+	XrmInitialize();
+	application.class = XrmPermStringToQuark(APP_CLASS);
+	application.name = XrmPermStringToQuark(APP_NAME);
+	for (res = 0; res < NRESOURCES; res++) {
+		resources[res].class = XrmPermStringToQuark(resdefs[res].class);
+		resources[res].name = XrmPermStringToQuark(resdefs[res].name);
+		switch (res) {
+		case RES_ALIGNMENT:
+			alignment = resdefs[res].value;
+			break;
+		case RES_BACKGROUND:
+		case RES_FOREGROUND:
+		case RES_BORDERCLR:
+			if (res == RES_BACKGROUND)
+				color = &background;
+			else if (res == RES_FOREGROUND)
+				color = &foreground;
+			else if (res == RES_BORDERCLR)
+				color = &borderclr;
+			*color = (XRenderColor){
+				.red   = RED(resdefs[res].value),
+				.green = GREEN(resdefs[res].value),
+				.blue  = BLUE(resdefs[res].value),
+				.alpha = 0xFFFF,
+			};
+			break;
+		case RES_LEADING:
+			leading_pixels = resdefs[res].value;
+			break;
+		case RES_OPACITY:
+			opacity = resdefs[res].value;
+			break;
+		case RES_PADDING:
+			padding_pixels = resdefs[res].value;
+			break;
+		case RES_SHRINK:
+			shrink = resdefs[res].value;
+			break;
+		case RES_IMAGEWID:
+			image_pixels = resdefs[res].value;
+			break;
+		case RES_BORDERWID:
+			border_pixels = resdefs[res].value;
+			break;
+		case RES_MAXHEIGHT:
+			max_height = resdefs[res].value;
+			break;
+		case RES_GAP:
+			gap_pixels = resdefs[res].value;
+			break;
+		case RES_GRAVITY:
+			gravity = resdefs[res].value;
+			break;
+		case RES_FACENAME:
+		case NRESOURCES:
+			/* ignore */
+			break;
+		}
+	}
+
+	success = XMatchVisualInfo(
+		dpy,
+		screen,
+		32,             /* preferred depth */
+		TrueColor,
+		&vinfo
+	);
+	cmap = success ? XCreateColormap(
+		dpy,
+		root,
+		vinfo.visual,
+		AllocNone
+	) : None;
+	if (success && cmap != None) {
+		colormap = cmap;
+		visual = vinfo.visual;
+		depth = vinfo.depth;
+	} else {
+		colormap = XDefaultColormap(dpy, screen);
+		visual = XDefaultVisual(dpy, screen);
+		depth = XDefaultDepth(dpy, screen);
+	}
+	xformat = XRenderFindVisualFormat(dpy, visual);
+	if (xformat == NULL)
+		errx(EXIT_FAILURE, "could not find XRender visual format");
+	alphaformat = XRenderFindStandardFormat(dpy, PictStandardA8);
+	if (alphaformat == NULL)
+		errx(EXIT_FAILURE, "could not find XRender visual format");
+	imlib_set_cache_size(2048 * 1024);
+	imlib_context_set_dither(1);
+	imlib_context_set_display(dpy);
+	imlib_context_set_visual(visual);
+	imlib_context_set_colormap(colormap);
+
+	parseresources(XResourceManagerString(dpy));
+	if (fontset == NULL)
+		setfont(NULL, 0.0);
+	if (fontset == NULL) {
+		errx(EXIT_FAILURE, "could not load any font");
+	}
+}
+
+static void
+cleanup(void)
+{
+	XFreeColormap(dpy, colormap);
+	XCloseDisplay(dpy);
+}
+
+static void
+readevent(struct Queue *queue)
+{
+	struct Item *item;
+	struct Itemspec *itemspec;
+	char *name;
+	XEvent ev;
+
+	while (XPending(dpy) && !XNextEvent(dpy, &ev)) switch (ev.type) {
+	case ButtonPress:
+		if ((item = getitem(queue, ev.xbutton.window)) == NULL)
+			break;
+		if ((ev.xbutton.button == actionbutton) && item->cmd)
+			cmditem(item);
+		delitem(queue, item);
+		break;
+	case MotionNotify:
+		if ((item = getitem(queue, ev.xmotion.window)) != NULL)
+			resettime(item);
+		break;
+	case ConfigureNotify:   /* monitor arrangement changed */
+		if (ev.xconfigure.window == root) {
+			initmonitor();
+			queue->change = true;
+		}
+		break;
+	case PropertyNotify:
+		if (ev.xproperty.state != PropertyNewValue)
+			break;
+		if (ev.xproperty.window != root)
+			break;
+		if (rflag && ev.xproperty.atom == XA_WM_NAME) {
+			if ((name = gettextprop(root, XA_WM_NAME)) == NULL)
+				break;
+			if ((itemspec = parseline(name)) != NULL) {
+				if (oflag) {
+					cleanitems(queue, NULL);
+				} else if (itemspec->tag) {
+					cleanitems(queue, itemspec->tag);
+				}
+				additem(queue, itemspec);
+				free(itemspec);
+			}
+			queue->change = true;
+			free(name);
+		}
+		break;
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1278,42 +1413,13 @@ main(int argc, char *argv[])
 	int flags;              /* status flags for stdin */
 	int reading = 1;        /* set to 0 when stdin reaches EOF */
 
-	/* open connection to server and set X variables */
-	if ((dpy = XOpenDisplay(NULL)) == NULL)
-		errx(1, "could not open display");
+	saveargc = argc;
+	saveargv = argv;
+	setup();
+	parseoptions(argc, argv);
 
-#ifdef __OpenBSD__
-	if (pledge("stdio rpath", NULL) == -1)
-		err(1, "pledge");
-#endif
-
-	screen = DefaultScreen(dpy);
-	root = RootWindow(dpy, screen);
-	visual = DefaultVisual(dpy, screen);
-	depth = DefaultDepth(dpy, screen);
-	colormap = DefaultColormap(dpy, screen);
-	xfd = XConnectionNumber(dpy);
-	XrmInitialize();
-	if ((xrm = XResourceManagerString(dpy)) != NULL)
-		xdb = XrmGetStringDatabase(xrm);
-
-	/* get configuration */
-	getresources();
-	getoptions(argc, argv);
-
-	/* imlib2 stuff */
-	imlib_set_cache_size(2048 * 1024);
-	imlib_context_set_dither(1);
-	imlib_context_set_display(dpy);
-	imlib_context_set_visual(visual);
-	imlib_context_set_colormap(colormap);
-
-	/* init stuff */
 	initsignal();
 	initmonitor();
-	initdc();
-	initatoms();
-	initstructurenotify();
 	initellipsis();
 
 	/* set up queue of notifications */
@@ -1342,8 +1448,11 @@ main(int argc, char *argv[])
 				reading = 0;
 			}
 			if (pfd[0].revents & POLLIN) {
-				if (fgets(buf, sizeof buf, stdin) == NULL)
-					break;
+				if (fgets(buf, sizeof buf, stdin) == NULL) {
+					pfd[0].fd = -1;
+					reading = 0;
+					continue;
+				}
 				if ((itemspec = parseline(buf)) != NULL) {
 					if (oflag) {
 						cleanitems(queue, NULL);
@@ -1379,16 +1488,12 @@ main(int argc, char *argv[])
 			moveitems(queue);
 		timeout = (queue->head) ? 1000 : -1;
 		XFlush(dpy);
-	} while (reading || queue->head);
+	} while (rflag || reading || queue->head);
 
 	/* clean up stuff */
 	cleanitems(queue, NULL);
-	cleandc();
 	free(queue);
-
-	/* close connection to server */
-	XrmDestroyDatabase(xdb);
-	XCloseDisplay(dpy);
+	cleanup();
 
 	return 0;
 }

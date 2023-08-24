@@ -1,69 +1,65 @@
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/63266536/93797439-c65d0680-fc2b-11ea-80e3-10bbd6f65dcb.gif", title="demo"/>
-</p>
-
 # XNotify
+
+![demo](https://user-images.githubusercontent.com/63266536/93797439-c65d0680-fc2b-11ea-80e3-10bbd6f65dcb.gif)
 
 XNotify displays a notification on the screen.
 XNotify receives a notification specification in stdin and shows a
 notification for the user on the screen.
 
-See the [manual](https://github.com/phillbush/xnotify/wiki) for more information on how xnotify works.
-
-
-## Features
-
 XNotify comes with the following features:
 
-* xnotify receives notifications from stdin.
+* XNotify receives notifications from stdin.
   You can use a fifo to echo notifications on the fly like
-
   `echo Hello World > /path/to/xnotify.fifo`
-
-* xnotify queue notifications and display them one above the other.
-
-* Image support, just prefix the notification string with `IMG:/path/to/the/file.png` and a tab.
-
+* XNotify queues notifications and displays them one above the other.
+* Image support, just prefix the notification string with
+  `IMG:/path/to/the/file.png` and a tab.
 * Multiple monitor support.  You can set the monitor with the `-m` option.
+* Support for fallback fonts (you can set more than one fonts, that will
+  be tried in order).
+* X resources support (you don't need to recompile Xnotify for
+  configuring it).
 
-* Support for fallback fonts (you can set more than one fonts, that will be tried in order).
+## Options
 
-* X resources support (you don't need to recompile Xnotify for configuring it).
+XNotify understands the following command-line options:
 
+* `-b button`:  Specify the action button.
+* `-g gravity`: Specify the screen corner/border to place notifications at.
+* `-h height`:  Specify the maximum height of a notification popup.
+* `-m monitor`: Specify the monitor to place notifications at.
+* `-o`:         Only one notification at a time.
+* `-r`:         Also read notifications from root window name (in
+                addition to read from standard input).
+* `-s seconds`: Specify the time in seconds notifications are visible.
+* `-w`:         Let the window manager control notification popups.
 
-## Files
+## Customization
 
-The files are:
+XNotify can be customized by setting the following X resources.
 
-* `./README`:           This file.
-* `./Makefile`:         The makefile.
-* `./config.h`:         The hardcoded default configuration for XNotify.
-* `./config.mk`:        The setup for the makefile.
-* `./xnotify.{c,h}`:    The source code of XNotify.
+* `alignment`:   Text alignment (left, center, or right).
+* `background`:  Background color.
+* `borderColor`: Border color.
+* `borderWidth`: Border width in pixels.
+* `faceName`:    Font.
+* `foreground`:  Text color.
+* `gap`:         Gap between notifications, in pixels.
+* `gravity`:     Screen corner/border to place notifications at.
+* `leading`:     Space between lines.
+* `maxHeight`:   Maximum notification height.
+* `opacity`:     Notification opacity from 0.0 to 1.0.
+* `shrink`:      Whether to shrink notifications to its content size.
+* `padding`:     Margin around the content.
+* `wrap`:        Whether to wrap long lines.
 
 
 ## Installation
 
-First, edit `./config.mk` to match your local setup.
+Run `make all` to build, and `make install` to install the binary and the
+manual into `${PREFIX}` (`/usr/local`).
 
-In order to build XNotify you need the `Imlib2`, `Xlib` and `Xft` header files.
-The default configuration for XNotify is specified in the file `config.h`,
-you can edit it, but most configuration can be changed at runtime via
-X resources and via command-line options.
-Enter the following command to build XNotify.
-This command creates the binary file `./xnotify`.
-
-	make
-
-By default, XNotify is installed into the `/usr/local` prefix.  Enter the
-following command to install XNotify (if necessary as root).  This command
-installs the binary file `./xnotify` into the `${PREFIX}/bin/` directory, and
-the manual file `./xnotify.1` into `${MANPREFIX}/man1/` directory.
-
-	make install
-
-
-## Running XNotify
+## Usage
 
 XNotify receives as input one line per notification.
 Each line is made out of a notification title and a notification body separated by any number of tabs.
@@ -112,3 +108,12 @@ run `xnotify` with the `-g` option set to the notification size in
 The argument for the `-g` option has the form `[WIDTHxHEIGHT][{+-}XPOS{+-}YPOS]`.
 Parts between square brackets are optional.
 `{+-}` means to chose either `+` or `-`.
+
+## License
+
+The code and manual are under the MIT/X license.
+See ./LICENSE for more information.
+
+## Epilogue
+
+**Read the manual.**

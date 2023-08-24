@@ -6,7 +6,7 @@
 .Nd popup a notification on the screen
 .Sh SYNOPSIS
 .Nm xnotify
-.Op Fl ow
+.Op Fl orw
 .Op Fl b Ar button
 .Op Fl G Ar gravity
 .Op Fl g Ar geometry
@@ -60,6 +60,11 @@ Monitors are counted from 0 (the default).
 .It Fl o
 Makes only one notification to exist at a time;
 so, when a new notification appears, the other ones are removed.
+.It Fl r
+Watch for notifications in the name of the root window.
+This works like how statusbar is set in the
+.Xr dwm 1
+window manager.
 .It Fl s Ar seconds
 Specify the time, in seconds, for a notification to be displayed before it is removed from screen.
 Without this option, the default of 10 seconds is used.
@@ -133,7 +138,7 @@ If set to
 text is vertically aligned to the top of the notificatio nwindow.
 .It Ic background
 The default background color.
-.It Ic border
+.It Ic borderColor
 The color of the border around a notification.
 .It Ic borderWidth
 The size in pixels of the border around a notification.
@@ -155,6 +160,8 @@ option.
 The size in pixels of the space between lines.
 .It Ic maxHeight
 The maximum height of a notification in pixels.
+.It Ic opacity
+Background opacity as a floating point number from 0.0 to 1.0.
 .It Ic shrink
 If set to
 .Qq Ic true ,
