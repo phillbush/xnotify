@@ -278,7 +278,7 @@ parsegravityspec(int *gravity, int *direction, const char *gravityspec)
 }
 
 static void
-parseoptions(int argc, char *argv[])
+parseoptions(int argc, char *argv[], const char **geomspec)
 {
 	unsigned long n;
 	int ch;
@@ -306,7 +306,7 @@ parseoptions(int argc, char *argv[])
 			}
 			break;
 		case 'g':
-			//config.geometryspec = optarg;
+			*geomspec = optarg;
 			break;
 		case 'h':
 			if ((n = strtoul(optarg, NULL, 10)) < INT_MAX)
@@ -435,30 +435,39 @@ initmonitor(void)
 	}
 }
 
-static struct Queue *
-setqueue(void)
+static void
+parsegeometry(const char *geometry, struct Queue *queue)
 {
-	struct Queue *queue;
-	int minw;
+	unsigned int width, height;
+	int flags, x, y;
 
-	if ((queue = malloc(sizeof *queue)) == NULL)
-		err(1, "malloc");
-
-	queue->head = NULL;
-	queue->tail = NULL;
-	queue->change = false;
-
-	/* set geometry of notification queue */
 	queue->x = 0;
 	queue->y = 0;
 	queue->w = 0;
 	queue->h = 0;
-	//parsegeometryspec(&queue->x, &queue->y, &queue->w, &queue->h);
+	flags = XParseGeometry(geometry, &x, &y, &width, &height);
+	if (flags & WidthValue)
+		queue->w = width;
+	if (flags & HeightValue)
+		queue->h = height;
+	if (flags & XValue)
+		queue->x = x;
+	if (flags & YValue)
+		queue->y = y;
+}
+
+static void
+setqueue(const char *geomspec, struct Queue *queue)
+{
+	int minw;
+
+	queue->head = NULL;
+	queue->tail = NULL;
+	queue->change = false;
+	parsegeometry(geomspec, queue);
 	minw = ellipsis.width + image_pixels + padding_pixels * 3 + 1;
 	if (queue->w < minw)
 		queue->w = MAX(DEFWIDTH, minw);
-
-	return queue;
 }
 
 static struct Item *
@@ -1400,24 +1409,26 @@ int
 main(int argc, char *argv[])
 {
 	struct Itemspec itemspec;
-	struct Queue *queue;    /* it contains the queue of notifications and their geometry */
+	struct Queue queue;     /* it contains the queue of notifications and their geometry */
 	struct pollfd pfd[2];   /* [2] for stdin and xfd, see poll(2) */
+	const char *geomspec;
 	char buf[BUFSIZ];       /* buffer for stdin */
 	int timeout = -1;       /* maximum interval for poll(2) to complete */
 	int flags;              /* status flags for stdin */
 	int reading = 1;        /* set to 0 when stdin reaches EOF */
 
+	geomspec = NULL;
 	saveargc = argc;
 	saveargv = argv;
 	setup();
-	parseoptions(argc, argv);
+	parseoptions(argc, argv, &geomspec);
 
 	initsignal();
 	initmonitor();
 	initellipsis();
 
 	/* set up queue of notifications */
-	queue = setqueue();
+	setqueue(geomspec, &queue);
 
 	/* Make stdin nonblocking */
 	if ((flags = fcntl(STDIN_FILENO, F_GETFL)) == -1)
@@ -1449,43 +1460,42 @@ main(int argc, char *argv[])
 				}
 				if (parseline(&itemspec, buf)) {
 					if (oflag) {
-						cleanitems(queue, NULL);
+						cleanitems(&queue, NULL);
 					} else if (itemspec.tag) {
-						cleanitems(queue, itemspec.tag);
+						cleanitems(&queue, itemspec.tag);
 					}
-					additem(queue, &itemspec);
+					additem(&queue, &itemspec);
 				}
 			}
 			if (pfd[1].revents & POLLIN) {
-				readevent(queue);
+				readevent(&queue);
 			}
 		}
 		if (sigflag != SIGNAL_NONE) {
 			switch (sigflag) {
 			case SIGNAL_CMD:
-				if (queue->head != NULL)
-					cmditem(queue->head);
+				if (queue.head != NULL)
+					cmditem(queue.head);
 				/* FALLTHROUGH */
 			case SIGNAL_KILL:
-				if (queue->head != NULL)
-					delitem(queue, queue->head);
+				if (queue.head != NULL)
+					delitem(&queue, queue.head);
 				break;
 			case SIGNAL_KILLALL:
-				cleanitems(queue, NULL);
+				cleanitems(&queue, NULL);
 				break;
 			}
 			sigflag = SIGNAL_NONE;
 		}
-		timeitems(queue);
-		if (queue->change)
-			moveitems(queue);
-		timeout = (queue->head) ? 1000 : -1;
+		timeitems(&queue);
+		if (queue.change)
+			moveitems(&queue);
+		timeout = (queue.head) ? 1000 : -1;
 		XFlush(dpy);
-	} while (rflag || reading || queue->head);
+	} while (rflag || reading || queue.head);
 
 	/* clean up stuff */
-	cleanitems(queue, NULL);
-	free(queue);
+	cleanitems(&queue, NULL);
 	cleanup();
 
 	return 0;
