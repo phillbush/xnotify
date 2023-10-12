@@ -11,7 +11,7 @@ LOCALLIB = /usr/local/lib
 X11INC = /usr/X11R6/include
 X11LIB = /usr/X11R6/lib
 
-DEFS = -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE -D_BSD_SOURCE
+DEFS = -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE -D_BSD_SOURCE -D_DEFAULT_SOURCE
 INCS = -I${LOCALINC} -I${X11INC} -I/usr/include/freetype2 -I${X11INC}/freetype2
 LIBS = -L${LOCALLIB} -L${X11LIB} -lImlib2 -lfontconfig -lXrender -lXft -lXinerama -lX11
 PROG_CFLAGS = -std=c99 -pedantic ${DEFS} ${INCS} ${CFLAGS} ${CPPFLAGS}
@@ -50,4 +50,4 @@ uninstall:
 	-rm ${bindir}/${PROG}
 	-rm ${mandir}/${MANS}
 
-.PHONY: all clean install uninstall lint
+.PHONY: all clean install uninstall lint tags

@@ -17,7 +17,7 @@
 .Nm
 is a notification launcher for X,
 it receives a notification specification from standard input
-and shows a notificationon thescreen.
+and shows a notification on the screen.
 The notification disappears automatically after a given number of seconds
 or after a mouse click is operated on it.
 .Pp
@@ -135,7 +135,7 @@ text is aligned to the left, center or right of the popup window, respectively.
 .It Ic alignTop
 If set to
 .Qq Ic true ,
-text is vertically aligned to the top of the notificatio nwindow.
+text is vertically aligned to the top of the notification window.
 .It Ic background
 The default background color.
 .It Ic borderColor
@@ -245,7 +245,7 @@ a line beginning with
 followed by a tab.
 For example:
 .Bd -literal -offset indent
-$ printf 'IMG:/path/to/file.png\etThis is a notification\en' > $XNOTIFY_FIFO
+$ printf 'IMG:/path/to/file.png\etHello World!\en' > $XNOTIFY_FIFO
 .Ed
 .Pp
 .Nm
@@ -253,12 +253,14 @@ does not read notifications from dbus.
 For
 .Nm
 to read dbus notifications,
-its stdin must be fed with the output of
+its stdin (or the root window's name, if
+.Fl r
+is used) must be fed with the output of
 .Xr tiramisu 1 .
 The following line makes
 .Xr tiramisu 1
 send dbus notifications to
-Nm .
+.Nm .
 This line can be added to
 .Pa ~/.xinitrc
 after the line calling
