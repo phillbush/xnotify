@@ -333,11 +333,9 @@ parseoptions(int argc, char *argv[])
 			break;
 		}
 	}
-	argc -= optind;
-	argv += optind;
-
-	if (argc)
+	if (argc - optind != 0) {
 		usage();
+	}
 }
 
 static void
@@ -675,7 +673,8 @@ drawitem(struct Item *item)
 		while (texth <= max_height) {
 			for (len = j = 0; text[len] != '\0'; len = j, j += strcspn(text + j, " \t")) {
 				j += strspn(text + j, " \t");
-				if (ctrlfnt_width(fontset, text, j) > item->textw)
+				xaligned = ctrlfnt_width(fontset, text, j);
+				if (xaligned > item->textw)
 					break;
 			}
 			if (len < 1)
@@ -892,16 +891,12 @@ optiontype(const char *s)
 	return UNKNOWN;
 }
 
-static struct Itemspec *
-parseline(char *s)
+static bool
+parseline(struct Itemspec *itemspec, char *s)
 {
 	enum ItemOption option;
-	struct Itemspec *itemspec;
 	const char *t;
 	int n;
-
-	if ((itemspec = malloc(sizeof *itemspec)) == NULL)
-		err(1, "malloc");
 
 	/* get the filename */
 	itemspec->file = NULL;
@@ -965,9 +960,9 @@ parseline(char *s)
 			itemspec->otherlines++;
 
 	if (!itemspec->firstline && !itemspec->file)
-		return NULL;
+		return false;
 
-	return itemspec;
+	return true;
 }
 
 static void
@@ -1356,7 +1351,7 @@ static void
 readevent(struct Queue *queue)
 {
 	struct Item *item;
-	struct Itemspec *itemspec;
+	struct Itemspec itemspec;
 	char *name;
 	XEvent ev;
 
@@ -1386,14 +1381,13 @@ readevent(struct Queue *queue)
 		if (rflag && ev.xproperty.atom == XA_WM_NAME) {
 			if ((name = gettextprop(root, XA_WM_NAME)) == NULL)
 				break;
-			if ((itemspec = parseline(name)) != NULL) {
+			if (parseline(&itemspec, name)) {
 				if (oflag) {
 					cleanitems(queue, NULL);
-				} else if (itemspec->tag) {
-					cleanitems(queue, itemspec->tag);
+				} else if (itemspec.tag) {
+					cleanitems(queue, itemspec.tag);
 				}
-				additem(queue, itemspec);
-				free(itemspec);
+				additem(queue, &itemspec);
 			}
 			queue->change = true;
 			free(name);
@@ -1405,7 +1399,7 @@ readevent(struct Queue *queue)
 int
 main(int argc, char *argv[])
 {
-	struct Itemspec *itemspec;
+	struct Itemspec itemspec;
 	struct Queue *queue;    /* it contains the queue of notifications and their geometry */
 	struct pollfd pfd[2];   /* [2] for stdin and xfd, see poll(2) */
 	char buf[BUFSIZ];       /* buffer for stdin */
@@ -1453,14 +1447,13 @@ main(int argc, char *argv[])
 					reading = 0;
 					continue;
 				}
-				if ((itemspec = parseline(buf)) != NULL) {
+				if (parseline(&itemspec, buf)) {
 					if (oflag) {
 						cleanitems(queue, NULL);
-					} else if (itemspec->tag) {
-						cleanitems(queue, itemspec->tag);
+					} else if (itemspec.tag) {
+						cleanitems(queue, itemspec.tag);
 					}
-					additem(queue, itemspec);
-					free(itemspec);
+					additem(queue, &itemspec);
 				}
 			}
 			if (pfd[1].revents & POLLIN) {
