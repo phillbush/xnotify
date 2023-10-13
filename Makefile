@@ -36,8 +36,8 @@ tags: ${SRCS}
 
 lint: ${SRCS}
 	-mandoc -T lint -W warning ${MANS}
-	#-cppcheck --enable=portability ${PROG_CPPFLAGS} ${SRCS}
-	-clang-tidy ${SRCS} -- ${PROG_CFLAGS}
+	-cppcheck --enable=portability ${PROG_CPPFLAGS} ${SRCS}
+	#-clang-tidy ${SRCS} -- ${PROG_CFLAGS}
 
 clean:
 	rm -f ${OBJS} ${PROG} ${PROG:=.core} tags

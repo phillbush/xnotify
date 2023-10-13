@@ -48,6 +48,7 @@
 	X(RES_FACENAME,   "FaceName",           "faceName",             0               )\
 	X(RES_FOREGROUND, "Foreground",         "foreground",           0xFFFFFF        )\
 	X(RES_GAP,        "Gap",                "gap",                  7               )\
+	X(RES_GEOMETRY,   "Geometry",           "geometry",             0               )\
 	X(RES_GRAVITY,    "Gravity",            "gravity",              NorthEastGravity)\
 	X(RES_IMAGEWID,   "ImageWidth",         "imageWidth",           80              )\
 	X(RES_LEADING,    "Leading",            "leading",              5               )\
@@ -166,6 +167,7 @@ static Window root;
 static int screen;
 static int depth;
 static int xfd;
+static struct Queue queue;      /* queue of notifications and their geometry */
 static struct Monitor mon;
 static Atom atoms[NATOMS];
 static Resource application, resources[NRESOURCES];
@@ -436,7 +438,7 @@ initmonitor(void)
 }
 
 static void
-parsegeometry(const char *geometry, struct Queue *queue)
+parsegeometry(struct Queue *queue, const char *geometry)
 {
 	unsigned int width, height;
 	int flags, x, y;
@@ -457,25 +459,26 @@ parsegeometry(const char *geometry, struct Queue *queue)
 }
 
 static void
-setqueue(const char *geomspec, struct Queue *queue)
+setqueue(const char *geomspec)
 {
 	int minw;
 
-	queue->head = NULL;
-	queue->tail = NULL;
-	queue->change = false;
-	parsegeometry(geomspec, queue);
+	queue.head = NULL;
+	queue.tail = NULL;
+	queue.change = false;
+	if (geomspec != NULL)
+		parsegeometry(&queue, geomspec);
 	minw = ellipsis.width + image_pixels + padding_pixels * 3 + 1;
-	if (queue->w < minw)
-		queue->w = MAX(DEFWIDTH, minw);
+	if (queue.w < minw)
+		queue.w = MAX(DEFWIDTH, minw);
 }
 
 static struct Item *
-getitem(struct Queue *queue, Window win)
+getitem(Window win)
 {
 	struct Item *item;
 
-	for (item = queue->head; item; item = item->next)
+	for (item = queue.head; item; item = item->next)
 		if (item->win == win)
 			return item;
 	return NULL;
@@ -773,7 +776,7 @@ estrdup(const char *s)
 }
 
 static void
-additem(struct Queue *queue, struct Itemspec *itemspec)
+additem(struct Itemspec *itemspec)
 {
 	const char *text;
 	struct Item *item;
@@ -787,12 +790,12 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	item->cmd = (itemspec->cmd) ? estrdup(itemspec->cmd) : NULL;
 	item->sec = itemspec->sec;
 	item->bar = itemspec->bar;
-	if (!queue->head)
-		queue->head = item;
+	if (!queue.head)
+		queue.head = item;
 	else
-		queue->tail->next = item;
-	item->prev = queue->tail;
-	queue->tail = item;
+		queue.tail->next = item;
+	item->prev = queue.tail;
+	queue.tail = item;
 
 	/* allocate texts */
 	item->line[0] = (itemspec->firstline) ? estrdup(itemspec->firstline) : NULL;
@@ -813,31 +816,31 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 
 	/* compute notification width and height */
 	item->imgw = image_pixels;
-	item->h = queue->h;
+	item->h = queue.h;
 	for (i = 0; i < item->nlines; i++) {
 		text = item->line[i];
 		w = ctrlfnt_width(fontset, text, strlen(text));
 	}
 	if (shrink) {
 		if (item->image) {
-			item->textw = queue->w - image_pixels - padding_pixels * 3;
+			item->textw = queue.w - image_pixels - padding_pixels * 3;
 			item->textw = MIN(w, item->textw);
 			item->w = item->textw + image_pixels + padding_pixels * 3;
 		} else {
-			item->textw = queue->w - padding_pixels * 2;
+			item->textw = queue.w - padding_pixels * 2;
 			item->textw = MIN(w, item->textw);
 			item->w = item->textw + padding_pixels * 2;
 		}
 	} else {
-		item->w = queue->w;
+		item->w = queue.w;
 		if (item->image) {
-			item->textw = queue->w - image_pixels - padding_pixels * (2 + (item->line[0] ? 1 : 0));
+			item->textw = queue.w - image_pixels - padding_pixels * (2 + (item->line[0] ? 1 : 0));
 			if (!image_pixels) {
 				item->textw = MIN(item->textw, w);
 			}
-			item->imgw = queue->w - item->textw - padding_pixels * (2 + (item->line[0] ? 1 : 0));
+			item->imgw = queue.w - item->textw - padding_pixels * (2 + (item->line[0] ? 1 : 0));
 		} else {
-			item->textw = queue->w - padding_pixels * 2;
+			item->textw = queue.w - padding_pixels * 2;
 		}
 	}
 
@@ -847,11 +850,11 @@ additem(struct Queue *queue, struct Itemspec *itemspec)
 	drawitem(item);
 
 	/* a new item was added to the queue, so the queue changed */
-	queue->change = true;
+	queue.change = true;
 }
 
 static void
-delitem(struct Queue *queue, struct Item *item)
+delitem(struct Item *item)
 {
 	int i;
 
@@ -861,13 +864,13 @@ delitem(struct Queue *queue, struct Item *item)
 	if (item->prev)
 		item->prev->next = item->next;
 	else
-		queue->head = item->next;
+		queue.head = item->next;
 	if (item->next)
 		item->next->prev = item->prev;
 	else
-		queue->tail = item->prev;
+		queue.tail = item->prev;
 	free(item);
-	queue->change = true;
+	queue.change = true;
 }
 
 static void
@@ -975,23 +978,23 @@ parseline(struct Itemspec *itemspec, char *s)
 }
 
 static void
-timeitems(struct Queue *queue)
+timeitems(void)
 {
 	struct Item *item;
 	struct Item *tmp;
 
-	item = queue->head;
+	item = queue.head;
 	while (item) {
 		tmp = item;
 		item = item->next;
 		if (tmp->sec && time(NULL) - tmp->time >= tmp->sec) {
-			delitem(queue, tmp);
+			delitem(tmp);
 		}
 	}
 }
 
 static void
-moveitems(struct Queue *queue)
+moveitems(void)
 {
 	struct Item *item;
 	int x, y;
@@ -1001,9 +1004,9 @@ moveitems(struct Queue *queue)
 	 * A notification has been deleted or added;
 	 * reorder the queue of notifications
 	 */
-	for (item = queue->head; item; item = item->next) {
-		x = queue->x + mon.x;
-		y = queue->y + mon.y;
+	for (item = queue.head; item; item = item->next) {
+		x = queue.x + mon.x;
+		y = queue.y + mon.y;
 		switch (gravity) {
 		case NorthWestGravity:
 			break;
@@ -1046,11 +1049,11 @@ moveitems(struct Queue *queue)
 		XMapWindow(dpy, item->win);
 	}
 
-	queue->change = false;
+	queue.change = false;
 }
 
 static void
-cleanitems(struct Queue *queue, const char *tag)
+cleanitems(const char *tag)
 {
 	struct Item *item;
 	struct Item *tmp;
@@ -1059,12 +1062,12 @@ cleanitems(struct Queue *queue, const char *tag)
 	 * Free all notification items of the given tag;
 	 * or free all items if tag is NULL
 	 */
-	item = queue->head;
+	item = queue.head;
 	while (item) {
 		tmp = item;
 		item = item->next;
 		if (tag == NULL || (tmp->tag && strcmp(tmp->tag, tag) == 0)) {
-			delitem(queue, tmp);
+			delitem(tmp);
 		}
 	}
 }
@@ -1185,6 +1188,9 @@ parseresources(const char *str)
 			else
 				*num = n;
 			break;
+		case RES_GEOMETRY:
+			parsegeometry(&queue, value);
+			break;
 		case RES_GRAVITY:
 			parsegravityspec(&gravity, &direction, value);
 			break;
@@ -1300,6 +1306,7 @@ setup(void)
 		case RES_GRAVITY:
 			gravity = resdefs[res].value;
 			break;
+		case RES_GEOMETRY:
 		case RES_FACENAME:
 		case NRESOURCES:
 			/* ignore */
@@ -1357,7 +1364,7 @@ cleanup(void)
 }
 
 static void
-readevent(struct Queue *queue)
+readevent(void)
 {
 	struct Item *item;
 	struct Itemspec itemspec;
@@ -1366,20 +1373,20 @@ readevent(struct Queue *queue)
 
 	while (XPending(dpy) && !XNextEvent(dpy, &ev)) switch (ev.type) {
 	case ButtonPress:
-		if ((item = getitem(queue, ev.xbutton.window)) == NULL)
+		if ((item = getitem(ev.xbutton.window)) == NULL)
 			break;
 		if ((ev.xbutton.button == actionbutton) && item->cmd)
 			cmditem(item);
-		delitem(queue, item);
+		delitem(item);
 		break;
 	case MotionNotify:
-		if ((item = getitem(queue, ev.xmotion.window)) != NULL)
+		if ((item = getitem(ev.xmotion.window)) != NULL)
 			resettime(item);
 		break;
 	case ConfigureNotify:   /* monitor arrangement changed */
 		if (ev.xconfigure.window == root) {
 			initmonitor();
-			queue->change = true;
+			queue.change = true;
 		}
 		break;
 	case PropertyNotify:
@@ -1392,13 +1399,13 @@ readevent(struct Queue *queue)
 				break;
 			if (parseline(&itemspec, name)) {
 				if (oflag) {
-					cleanitems(queue, NULL);
+					cleanitems(NULL);
 				} else if (itemspec.tag) {
-					cleanitems(queue, itemspec.tag);
+					cleanitems(itemspec.tag);
 				}
-				additem(queue, &itemspec);
+				additem(&itemspec);
 			}
-			queue->change = true;
+			queue.change = true;
 			free(name);
 		}
 		break;
@@ -1409,7 +1416,6 @@ int
 main(int argc, char *argv[])
 {
 	struct Itemspec itemspec;
-	struct Queue queue;     /* it contains the queue of notifications and their geometry */
 	struct pollfd pfd[2];   /* [2] for stdin and xfd, see poll(2) */
 	const char *geomspec;
 	char buf[BUFSIZ];       /* buffer for stdin */
@@ -1428,7 +1434,7 @@ main(int argc, char *argv[])
 	initellipsis();
 
 	/* set up queue of notifications */
-	setqueue(geomspec, &queue);
+	setqueue(geomspec);
 
 	/* Make stdin nonblocking */
 	if ((flags = fcntl(STDIN_FILENO, F_GETFL)) == -1)
@@ -1460,15 +1466,15 @@ main(int argc, char *argv[])
 				}
 				if (parseline(&itemspec, buf)) {
 					if (oflag) {
-						cleanitems(&queue, NULL);
+						cleanitems(NULL);
 					} else if (itemspec.tag) {
-						cleanitems(&queue, itemspec.tag);
+						cleanitems(itemspec.tag);
 					}
-					additem(&queue, &itemspec);
+					additem(&itemspec);
 				}
 			}
 			if (pfd[1].revents & POLLIN) {
-				readevent(&queue);
+				readevent();
 			}
 		}
 		if (sigflag != SIGNAL_NONE) {
@@ -1479,24 +1485,21 @@ main(int argc, char *argv[])
 				/* FALLTHROUGH */
 			case SIGNAL_KILL:
 				if (queue.head != NULL)
-					delitem(&queue, queue.head);
+					delitem(queue.head);
 				break;
 			case SIGNAL_KILLALL:
-				cleanitems(&queue, NULL);
+				cleanitems(NULL);
 				break;
 			}
 			sigflag = SIGNAL_NONE;
 		}
-		timeitems(&queue);
+		timeitems();
 		if (queue.change)
-			moveitems(&queue);
+			moveitems();
 		timeout = (queue.head) ? 1000 : -1;
 		XFlush(dpy);
 	} while (rflag || reading || queue.head);
-
-	/* clean up stuff */
-	cleanitems(&queue, NULL);
+	cleanitems(NULL);
 	cleanup();
-
-	return 0;
+	return EXIT_SUCCESS;
 }
